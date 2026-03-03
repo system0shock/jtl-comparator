@@ -47,6 +47,17 @@ def compare_runs():
 
     name1 = request.form.get("name1", "Run 1").strip() or "Run 1"
     name2 = request.form.get("name2", "Run 2").strip() or "Run 2"
+    delta_rules = {
+        "time_warning_pct": request.form.get("time_warning_pct"),
+        "time_critical_pct": request.form.get("time_critical_pct"),
+        "time_improved_pct": request.form.get("time_improved_pct"),
+        "rps_warning_drop_pct": request.form.get("rps_warning_drop_pct"),
+        "rps_critical_drop_pct": request.form.get("rps_critical_drop_pct"),
+        "rps_improved_gain_pct": request.form.get("rps_improved_gain_pct"),
+        "err_warning_increase_pct": request.form.get("err_warning_increase_pct"),
+        "err_critical_increase_pct": request.form.get("err_critical_increase_pct"),
+        "err_improved_decrease_pct": request.form.get("err_improved_decrease_pct"),
+    }
 
     # Сохраняем загруженные файлы во временные файлы и анализируем
     tmp1 = tmp2 = None
@@ -68,7 +79,7 @@ def compare_runs():
         df2 = parse_jtl(tmp2)
 
         # Сравниваем и возвращаем результат
-        result = compare(df1, df2, name1, name2)
+        result = compare(df1, df2, name1, name2, rules=delta_rules)
         return jsonify(result)
 
     except ValueError as exc:

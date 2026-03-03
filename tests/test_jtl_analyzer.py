@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from analyzers.jtl_analyzer import compare
+from analyzers.jtl_analyzer import compare, _delta_pct, _normalize_delta_rules
 
 
 def _make_rows(label: str, samples: int, elapsed: float, success: bool = True, start_ts: int = 0):
@@ -45,6 +45,33 @@ class JtlAnalyzerSummaryTests(unittest.TestCase):
 
         self.assertIsNone(only_run1_row["err_2"])
         self.assertEqual(only_run1_row["err_class"], "neutral")
+
+    def test_custom_delta_rules_are_applied(self):
+        df1 = pd.DataFrame(_make_rows("A", 10, 100.0, True, 0))
+        df2 = pd.DataFrame(_make_rows("A", 10, 112.0, True, 0))
+
+        custom_rules = {
+            "time_warning_pct": 5,
+            "time_critical_pct": 10,
+        }
+        result = compare(df1, df2, "Run 1", "Run 2", rules=custom_rules)
+        row = result["rows"][0]
+
+        self.assertEqual(row["d_avg"], 12.0)
+        self.assertEqual(row["d_avg_class"], "critical")
+        self.assertEqual(result["rules"]["time_warning_pct"], 5.0)
+        self.assertEqual(result["rules"]["time_critical_pct"], 10.0)
+
+    def test_delta_pct_returns_none_when_baseline_zero(self):
+        self.assertIsNone(_delta_pct(0, 15))
+
+    def test_normalize_rules_rejects_negative_value(self):
+        with self.assertRaises(ValueError):
+            _normalize_delta_rules({"time_warning_pct": -1})
+
+    def test_normalize_rules_rejects_critical_less_than_warning(self):
+        with self.assertRaises(ValueError):
+            _normalize_delta_rules({"time_warning_pct": 15, "time_critical_pct": 10})
 
 
 if __name__ == "__main__":

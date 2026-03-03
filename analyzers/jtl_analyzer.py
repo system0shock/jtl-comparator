@@ -6,10 +6,60 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from typing import Any
 
 
 # Ожидаемые колонки стандартного JTL-формата JMeter
 REQUIRED_COLUMNS = {"timeStamp", "elapsed", "label", "success"}
+
+
+DEFAULT_DELTA_RULES = {
+    "time_warning_pct": 10.0,
+    "time_critical_pct": 20.0,
+    "time_improved_pct": 10.0,
+    "rps_warning_drop_pct": 10.0,
+    "rps_critical_drop_pct": 20.0,
+    "rps_improved_gain_pct": 10.0,
+    "err_warning_increase_pct": 1.0,
+    "err_critical_increase_pct": 3.0,
+    "err_improved_decrease_pct": 0.0,
+}
+
+
+def _to_non_negative_float(value: Any, name: str) -> float:
+    """Конвертирует значение в float >= 0."""
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Некорректное значение правила '{name}': {value}") from exc
+    if result < 0:
+        raise ValueError(f"Значение правила '{name}' не может быть отрицательным: {value}")
+    return result
+
+
+def _normalize_delta_rules(rules: dict | None) -> dict[str, float]:
+    """
+    Возвращает валидированные правила подсветки дельт.
+    Если rules не переданы, используются значения по умолчанию.
+    """
+    normalized = DEFAULT_DELTA_RULES.copy()
+    if not rules:
+        return normalized
+
+    for key in normalized:
+        raw_value = rules.get(key)
+        if raw_value is None or str(raw_value).strip() == "":
+            continue
+        normalized[key] = _to_non_negative_float(raw_value, key)
+
+    if normalized["time_critical_pct"] < normalized["time_warning_pct"]:
+        raise ValueError("Для времени critical порог должен быть >= warning порога.")
+    if normalized["rps_critical_drop_pct"] < normalized["rps_warning_drop_pct"]:
+        raise ValueError("Для RPS critical порог должен быть >= warning порога.")
+    if normalized["err_critical_increase_pct"] < normalized["err_warning_increase_pct"]:
+        raise ValueError("Для Error Rate critical порог должен быть >= warning порога.")
+
+    return normalized
 
 
 def parse_jtl(filepath: str | Path) -> pd.DataFrame:
@@ -111,45 +161,51 @@ def _delta_pct(v1: float, v2: float) -> float | None:
     return round((v2 - v1) / v1 * 100, 1)
 
 
-def _time_css_class(delta: float | None) -> str:
+def _time_css_class(delta: float | None, rules: dict[str, float]) -> str:
     """CSS-класс для метрик времени (деградация = рост)."""
     if delta is None:
         return "neutral"
-    if delta > 20:
+    if delta > rules["time_critical_pct"]:
         return "critical"
-    if delta > 10:
+    if delta > rules["time_warning_pct"]:
         return "warning"
-    if delta < -10:
+    if delta < -rules["time_improved_pct"]:
         return "improved"
     return "neutral"
 
 
-def _rps_css_class(delta: float | None) -> str:
+def _rps_css_class(delta: float | None, rules: dict[str, float]) -> str:
     """CSS-класс для RPS (деградация = снижение, инвертированная логика)."""
     if delta is None:
         return "neutral"
-    if delta < -20:
+    if delta < -rules["rps_critical_drop_pct"]:
         return "critical"
-    if delta < -10:
+    if delta < -rules["rps_warning_drop_pct"]:
         return "warning"
-    if delta > 10:
+    if delta > rules["rps_improved_gain_pct"]:
         return "improved"
     return "neutral"
 
 
-def _err_css_class(err1: float, err2: float) -> str:
+def _err_css_class(err1: float, err2: float, rules: dict[str, float]) -> str:
     """CSS-класс для Error Rate."""
     diff = err2 - err1
-    if diff > 3:
+    if diff > rules["err_critical_increase_pct"]:
         return "critical"
-    if diff > 1:
+    if diff > rules["err_warning_increase_pct"]:
         return "warning"
-    if diff < 0:
+    if diff < -rules["err_improved_decrease_pct"]:
         return "improved"
     return "neutral"
 
 
-def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dict:
+def compare(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+    name1: str,
+    name2: str,
+    rules: dict | None = None,
+) -> dict:
     """
     Сравнивает агрегированные метрики двух прогонов.
 
@@ -159,6 +215,8 @@ def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dic
     :param name2: название прогона 2
     :return: словарь с результатами для отдачи в JSON
     """
+    active_rules = _normalize_delta_rules(rules)
+
     agg1 = aggregate(df1)
     agg2 = aggregate(df2)
 
@@ -204,29 +262,30 @@ def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dic
             "err_2":       round(err2, 2) if err2 is not None else None,
             # Дельты и классы
             "d_avg":       d_avg,
-            "d_avg_class": _time_css_class(d_avg),
+            "d_avg_class": _time_css_class(d_avg, active_rules),
             "d_p95":       d_p95,
-            "d_p95_class": _time_css_class(d_p95),
+            "d_p95_class": _time_css_class(d_p95, active_rules),
             "d_p99":       d_p99,
-            "d_p99_class": _time_css_class(d_p99),
+            "d_p99_class": _time_css_class(d_p99, active_rules),
             "d_rps":       d_rps,
-            "d_rps_class": _rps_css_class(d_rps),
-            "err_class":   _err_css_class(err1, err2) if (err1 is not None and err2 is not None) else "neutral",
+            "d_rps_class": _rps_css_class(d_rps, active_rules),
+            "err_class":   _err_css_class(err1, err2, active_rules) if (err1 is not None and err2 is not None) else "neutral",
         })
 
     # Summary: средние значения по всем транзакциям (только где есть оба прогона)
     both = [r for r in rows if r["avg_1"] is not None and r["avg_2"] is not None]
-    summary = _build_summary(both) if both else None
+    summary = _build_summary(both, active_rules) if both else None
 
     return {
         "name1":   name1,
         "name2":   name2,
+        "rules":   active_rules,
         "rows":    rows,
         "summary": summary,
     }
 
 
-def _build_summary(rows: list[dict]) -> dict:
+def _build_summary(rows: list[dict], rules: dict[str, float]) -> dict:
     """Строит строку Summary — взвешенные средние по всем транзакциям (вес = samples)."""
     def weighted_avg_metric(value_key: str, weight_key: str) -> float | None:
         total_weight = 0.0
@@ -273,12 +332,12 @@ def _build_summary(rows: list[dict]) -> dict:
         "rps_2":       rps2,
         "err_2":       round(err2, 2) if err2 is not None else None,
         "d_avg":       d_avg,
-        "d_avg_class": _time_css_class(d_avg),
+        "d_avg_class": _time_css_class(d_avg, rules),
         "d_p95":       d_p95,
-        "d_p95_class": _time_css_class(d_p95),
+        "d_p95_class": _time_css_class(d_p95, rules),
         "d_p99":       d_p99,
-        "d_p99_class": _time_css_class(d_p99),
+        "d_p99_class": _time_css_class(d_p99, rules),
         "d_rps":       d_rps,
-        "d_rps_class": _rps_css_class(d_rps),
-        "err_class":   _err_css_class(err1, err2) if (err1 is not None and err2 is not None) else "neutral",
+        "d_rps_class": _rps_css_class(d_rps, rules),
+        "err_class":   _err_css_class(err1, err2, rules) if (err1 is not None and err2 is not None) else "neutral",
     }

@@ -69,6 +69,49 @@
       margin-bottom: 24px;
     }
 
+    .help-panel {
+      background: linear-gradient(180deg, rgba(79,142,247,0.12), rgba(79,142,247,0.05));
+      border: 1px solid rgba(79,142,247,0.35);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .help-panel summary {
+      cursor: pointer;
+      padding: 12px 16px;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      list-style: none;
+      user-select: none;
+    }
+    .help-panel summary::-webkit-details-marker { display: none; }
+    .help-panel summary::before {
+      content: "▸";
+      color: rgba(255,255,255,0.75);
+      margin-right: 8px;
+    }
+    .help-panel[open] summary::before { content: "▾"; }
+    .help-panel-body {
+      border-top: 1px solid rgba(79,142,247,0.25);
+      padding: 12px 16px 14px;
+    }
+    .help-panel p, .help-panel li {
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .help-panel ol {
+      margin-left: 18px;
+      display: grid;
+      gap: 4px;
+    }
+    .help-panel .help-note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .upload-card {
       background: var(--bg2);
       border: 1px solid var(--border);
@@ -144,6 +187,60 @@
       gap: 12px;
       margin-bottom: 24px;
       flex-wrap: wrap;
+    }
+
+    .rules-panel {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .rules-panel summary {
+      cursor: pointer;
+      padding: 12px 16px;
+      color: var(--text);
+      font-weight: 600;
+      list-style: none;
+      user-select: none;
+    }
+    .rules-panel summary::-webkit-details-marker { display: none; }
+    .rules-panel summary::before {
+      content: "▸";
+      color: var(--muted);
+      margin-right: 8px;
+    }
+    .rules-panel[open] summary::before { content: "▾"; }
+    .rules-body {
+      border-top: 1px solid var(--border);
+      padding: 14px 16px 16px;
+    }
+    .rules-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      gap: 10px 14px;
+    }
+    .rule-field label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .rule-field input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 7px 9px;
+      outline: none;
+    }
+    .rule-field input:focus { border-color: var(--accent); }
+    .rules-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 12px;
     }
 
     .btn {
@@ -315,7 +412,53 @@
     .empty-state p { font-size: 14px; }
 
     /* ===================== TOOLTIP ===================== */
-    [title] { cursor: help; }
+    .help-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 1px solid rgba(122,127,154,0.7);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      cursor: help;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+    .has-tooltip {
+      cursor: help;
+      text-decoration: underline dotted rgba(122,127,154,0.6);
+      text-underline-offset: 3px;
+    }
+    .app-tooltip {
+      position: fixed;
+      z-index: 9999;
+      max-width: 360px;
+      background: linear-gradient(180deg, #22283e 0%, #171b2c 100%);
+      border: 1px solid rgba(79,142,247,0.45);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.45);
+      border-radius: 8px;
+      color: #e9ecff;
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 10px 11px;
+      pointer-events: none;
+      white-space: pre-line;
+      opacity: 0;
+      transform: translateY(2px);
+      transition: opacity .12s ease, transform .12s ease;
+    }
+    .app-tooltip.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 960px) {
+      .upload-section { grid-template-columns: 1fr; }
+      .rules-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -358,6 +501,87 @@
     </div>
   </div>
 
+  <details class="help-panel">
+    <summary>Как пользоваться инструментом</summary>
+    <div class="help-panel-body">
+      <ol>
+        <li>Задайте имена прогонов и загрузите два JTL-файла (Run 1 — база, Run 2 — новая версия).</li>
+        <li>При необходимости откройте блок правил и настройте пороги подсветки под ваш SLA.</li>
+        <li>Нажмите «Сравнить» и проанализируйте таблицу: время (Avg/p95/p99), RPS и Error Rate.</li>
+        <li>Наведите курсор на ячейки Δ%, чтобы увидеть формулу расчета и интерпретацию «лучше/хуже».</li>
+        <li>Экспортируйте результат в Markdown или CSV для отчета.</li>
+      </ol>
+      <p class="help-note">
+        Для метрик времени рост значения — это ухудшение, а для RPS рост — улучшение.
+      </p>
+    </div>
+  </details>
+
+  <details class="rules-panel">
+    <summary>Правила подсветки дельты</summary>
+    <div class="rules-body">
+      <div class="rules-grid">
+        <div class="rule-field">
+          <label for="time_warning_pct">Time warning +%
+            <span class="help-icon" data-tooltip="Если Δ времени выше этого порога — ячейка станет warning (желтая).">?</span>
+          </label>
+          <input id="time_warning_pct" type="number" min="0" step="0.1" value="10" data-default="10" />
+        </div>
+        <div class="rule-field">
+          <label for="time_critical_pct">Time critical +%
+            <span class="help-icon" data-tooltip="Если Δ времени выше этого порога — ячейка станет critical (красная).">?</span>
+          </label>
+          <input id="time_critical_pct" type="number" min="0" step="0.1" value="20" data-default="20" />
+        </div>
+        <div class="rule-field">
+          <label for="time_improved_pct">Time improved -%
+            <span class="help-icon" data-tooltip="Если Δ времени ниже -порога — ячейка станет improved (зеленая).">?</span>
+          </label>
+          <input id="time_improved_pct" type="number" min="0" step="0.1" value="10" data-default="10" />
+        </div>
+        <div class="rule-field">
+          <label for="rps_warning_drop_pct">RPS warning drop %
+            <span class="help-icon" data-tooltip="Если Δ RPS ниже -порога — warning (желтая).">?</span>
+          </label>
+          <input id="rps_warning_drop_pct" type="number" min="0" step="0.1" value="10" data-default="10" />
+        </div>
+        <div class="rule-field">
+          <label for="rps_critical_drop_pct">RPS critical drop %
+            <span class="help-icon" data-tooltip="Если Δ RPS ниже -порога — critical (красная).">?</span>
+          </label>
+          <input id="rps_critical_drop_pct" type="number" min="0" step="0.1" value="20" data-default="20" />
+        </div>
+        <div class="rule-field">
+          <label for="rps_improved_gain_pct">RPS improved gain %
+            <span class="help-icon" data-tooltip="Если Δ RPS выше порога — improved (зеленая).">?</span>
+          </label>
+          <input id="rps_improved_gain_pct" type="number" min="0" step="0.1" value="10" data-default="10" />
+        </div>
+        <div class="rule-field">
+          <label for="err_warning_increase_pct">Err warning +pp
+            <span class="help-icon" data-tooltip="Если Error Rate во втором прогоне вырос больше этого значения (в процентных пунктах) — warning.">?</span>
+          </label>
+          <input id="err_warning_increase_pct" type="number" min="0" step="0.1" value="1" data-default="1" />
+        </div>
+        <div class="rule-field">
+          <label for="err_critical_increase_pct">Err critical +pp
+            <span class="help-icon" data-tooltip="Если Error Rate во втором прогоне вырос больше этого значения (в п.п.) — critical.">?</span>
+          </label>
+          <input id="err_critical_increase_pct" type="number" min="0" step="0.1" value="3" data-default="3" />
+        </div>
+        <div class="rule-field">
+          <label for="err_improved_decrease_pct">Err improved -pp
+            <span class="help-icon" data-tooltip="Если Error Rate во втором прогоне снизился больше этого значения (в п.п.) — improved.">?</span>
+          </label>
+          <input id="err_improved_decrease_pct" type="number" min="0" step="0.1" value="0" data-default="0" />
+        </div>
+      </div>
+      <div class="rules-actions">
+        <button class="btn btn-secondary" type="button" onclick="resetDeltaRules()">Сбросить к дефолту</button>
+      </div>
+    </div>
+  </details>
+
   <!-- Кнопка сравнения -->
   <div class="actions-bar">
     <button class="btn btn-primary" id="btnCompare" onclick="runCompare()">
@@ -398,6 +622,17 @@
   // Глобальное хранилище последних результатов (для экспорта)
   // ============================================================
   let lastResult = null;
+  const DELTA_RULE_KEYS = [
+    'time_warning_pct',
+    'time_critical_pct',
+    'time_improved_pct',
+    'rps_warning_drop_pct',
+    'rps_critical_drop_pct',
+    'rps_improved_gain_pct',
+    'err_warning_increase_pct',
+    'err_critical_increase_pct',
+    'err_improved_decrease_pct'
+  ];
 
   // ============================================================
   // Drag & Drop
@@ -437,6 +672,24 @@
   setupDropZone('drop1', 'file1', 'fname1');
   setupDropZone('drop2', 'file2', 'fname2');
 
+  function collectDeltaRules() {
+    const rules = {};
+    DELTA_RULE_KEYS.forEach((key) => {
+      const input = document.getElementById(key);
+      rules[key] = input ? input.value : '';
+    });
+    return rules;
+  }
+
+  function resetDeltaRules() {
+    DELTA_RULE_KEYS.forEach((key) => {
+      const input = document.getElementById(key);
+      if (input) {
+        input.value = input.dataset.default ?? '';
+      }
+    });
+  }
+
   // ============================================================
   // Сравнение (AJAX)
   // ============================================================
@@ -457,6 +710,8 @@
     fd.append('file2', file2);
     fd.append('name1', document.getElementById('name1').value || 'Run 1');
     fd.append('name2', document.getElementById('name2').value || 'Run 2');
+    const deltaRules = collectDeltaRules();
+    Object.entries(deltaRules).forEach(([key, value]) => fd.append(key, value));
 
     try {
       const resp = await fetch('/compare', { method: 'POST', body: fd });
@@ -481,7 +736,7 @@
   // Рендер таблицы
   // ============================================================
   function renderTable(data) {
-    const { name1, name2, rows, summary } = data;
+    const { name1, name2, rows, summary, rules } = data;
 
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('resultSection').style.display = '';
@@ -496,10 +751,38 @@
     const fmtDelta = (v) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v + '%';
     const fmtVal   = (v) => v === null || v === undefined ? '—' : v;
     const fmtPct   = (v) => v === null || v === undefined ? '—' : `${v}%`;
+    const fmtSigned = (v) => v > 0 ? `+${v}%` : `${v}%`;
+    const tipAttr = (text) => esc(text).replace(/\n/g, '&#10;');
+
+    function ruleHint(metricType) {
+      if (!rules) return '';
+      if (metricType === 'time') {
+        return `Пороги: warning > +${rules.time_warning_pct}%, critical > +${rules.time_critical_pct}%, improved < -${rules.time_improved_pct}%.`;
+      }
+      if (metricType === 'rps') {
+        return `Пороги: warning < -${rules.rps_warning_drop_pct}%, critical < -${rules.rps_critical_drop_pct}%, improved > +${rules.rps_improved_gain_pct}%.`;
+      }
+      return '';
+    }
+
+    function deltaTooltip(metricName, v1, v2, delta, metricType = 'time') {
+      if (delta === null || delta === undefined || v1 === null || v1 === undefined || v2 === null || v2 === undefined) {
+        return `${metricName}: дельта не рассчитана (нет данных или базовое значение равно 0).`;
+      }
+      const direction = metricType === 'time'
+        ? (delta > 0 ? 'хуже: время выросло' : delta < 0 ? 'лучше: время снизилось' : 'без изменений')
+        : (delta > 0 ? 'лучше: RPS вырос' : delta < 0 ? 'хуже: RPS снизился' : 'без изменений');
+      const hint = metricType === 'time' || metricType === 'rps' ? `\n${ruleHint(metricType)}` : '';
+      return `${metricName}\nФормула: (${v2} - ${v1}) / ${v1} * 100 = ${fmtSigned(delta)}\nИнтерпретация: ${direction}.${hint}`;
+    }
 
     // Строки тела таблицы
     const makeRow = (row, isSummary) => {
       const cls = isSummary ? ' class="summary-row"' : '';
+      const tipAvg = deltaTooltip('Δ Avg%', row.avg_1, row.avg_2, row.d_avg, 'time');
+      const tipP95 = deltaTooltip('Δ p95%', row.p95_1, row.p95_2, row.d_p95, 'time');
+      const tipP99 = deltaTooltip('Δ p99%', row.p99_1, row.p99_2, row.d_p99, 'time');
+      const tipRps = deltaTooltip('Δ RPS%', row.rps_1, row.rps_2, row.d_rps, 'rps');
       return `<tr${cls}>
         <td class="label-cell" title="${esc(row.label)}">${esc(row.label)}</td>
         <td class="num">${fmtVal(row.samples_1)}</td>
@@ -516,10 +799,10 @@
         <td class="val">${fmtVal(row.rps_2)}</td>
         <td class="val err ${row.err_class}">${fmtPct(row.err_2)}</td>
 
-        <td class="delta sep ${row.d_avg_class}">${fmtDelta(row.d_avg)}</td>
-        <td class="delta ${row.d_p95_class}">${fmtDelta(row.d_p95)}</td>
-        <td class="delta ${row.d_p99_class}">${fmtDelta(row.d_p99)}</td>
-        <td class="delta ${row.d_rps_class}">${fmtDelta(row.d_rps)}</td>
+        <td class="delta sep ${row.d_avg_class} has-tooltip" data-tooltip="${tipAttr(tipAvg)}">${fmtDelta(row.d_avg)}</td>
+        <td class="delta ${row.d_p95_class} has-tooltip" data-tooltip="${tipAttr(tipP95)}">${fmtDelta(row.d_p95)}</td>
+        <td class="delta ${row.d_p99_class} has-tooltip" data-tooltip="${tipAttr(tipP99)}">${fmtDelta(row.d_p99)}</td>
+        <td class="delta ${row.d_rps_class} has-tooltip" data-tooltip="${tipAttr(tipRps)}">${fmtDelta(row.d_rps)}</td>
       </tr>`;
     };
 
@@ -637,6 +920,80 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+
+  // ============================================================
+  // Кастомный tooltip
+  // ============================================================
+  let tooltipEl = null;
+  let tooltipTarget = null;
+
+  function ensureTooltip() {
+    if (tooltipEl) return tooltipEl;
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'app-tooltip';
+    document.body.appendChild(tooltipEl);
+    return tooltipEl;
+  }
+
+  function positionTooltip(clientX, clientY) {
+    if (!tooltipEl) return;
+    const pad = 12;
+    const tw = tooltipEl.offsetWidth || 300;
+    const th = tooltipEl.offsetHeight || 80;
+    let x = clientX + 14;
+    let y = clientY + 14;
+
+    if (x + tw + pad > window.innerWidth) x = clientX - tw - 14;
+    if (y + th + pad > window.innerHeight) y = clientY - th - 14;
+    if (x < pad) x = pad;
+    if (y < pad) y = pad;
+
+    tooltipEl.style.left = `${x}px`;
+    tooltipEl.style.top = `${y}px`;
+  }
+
+  function showTooltip(target, clientX, clientY) {
+    const text = target?.getAttribute('data-tooltip');
+    if (!text) return;
+    ensureTooltip();
+    tooltipTarget = target;
+    tooltipEl.textContent = text;
+    tooltipEl.classList.add('visible');
+    positionTooltip(clientX, clientY);
+  }
+
+  function hideTooltip() {
+    if (!tooltipEl) return;
+    tooltipTarget = null;
+    tooltipEl.classList.remove('visible');
+  }
+
+  document.addEventListener('mouseover', (e) => {
+    const target = e.target.closest('[data-tooltip]');
+    if (!target) return;
+    showTooltip(target, e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!tooltipTarget || !tooltipEl || !tooltipEl.classList.contains('visible')) return;
+    positionTooltip(e.clientX, e.clientY);
+  });
+
+  document.addEventListener('mouseout', (e) => {
+    if (!tooltipTarget) return;
+    const to = e.relatedTarget;
+    if (to && to.closest && to.closest('[data-tooltip]') === tooltipTarget) return;
+    hideTooltip();
+  });
+
+  document.addEventListener('focusin', (e) => {
+    const target = e.target.closest('[data-tooltip]');
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    showTooltip(target, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  });
+
+  document.addEventListener('focusout', () => hideTooltip());
 </script>
 </body>
 </html>

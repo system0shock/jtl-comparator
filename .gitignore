@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local artifacts
+tmp_compare.json
+
+# Local assistant notes
+CLAUDE.md
