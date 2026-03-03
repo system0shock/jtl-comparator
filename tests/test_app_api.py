@@ -106,5 +106,51 @@ class CompareApiTests(unittest.TestCase):
         self.assertEqual(data["rows"][0]["d_avg_class"], "critical")
 
 
+class SummarizeApiTests(unittest.TestCase):
+    def setUp(self):
+        self.client = app.test_client()
+
+    def test_summarize_returns_503_when_no_credentials(self):
+        """Без gigachat.key и без env-переменной должен вернуться 503."""
+        import analyzers.gigachat_client as gc
+        import os
+        original_key_file = gc._KEY_FILE
+        gc._KEY_FILE = gc._KEY_FILE.parent / "__nonexistent__.key"
+        try:
+            from unittest.mock import patch
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("GIGACHAT_CREDENTIALS", None)
+                payload = {"name1": "R1", "name2": "R2", "rows": [], "summary": None}
+                resp = self.client.post(
+                    "/summarize",
+                    json=payload,
+                    content_type="application/json",
+                )
+        finally:
+            gc._KEY_FILE = original_key_file
+        self.assertEqual(resp.status_code, 503)
+        self.assertIn("error", resp.get_json())
+
+    def test_summarize_returns_400_on_empty_body(self):
+        """Пустое тело запроса должно вернуть 400."""
+        import analyzers.gigachat_client as gc
+        import os
+        # Имитируем наличие credentials, чтобы пройти первую проверку
+        original_key_file = gc._KEY_FILE
+        gc._KEY_FILE = gc._KEY_FILE.parent / "__nonexistent__.key"
+        try:
+            from unittest.mock import patch
+            with patch.dict(os.environ, {"GIGACHAT_CREDENTIALS": "fake_b64_creds"}):
+                resp = self.client.post(
+                    "/summarize",
+                    data="",
+                    content_type="application/json",
+                )
+        finally:
+            gc._KEY_FILE = original_key_file
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("error", resp.get_json())
+
+
 if __name__ == "__main__":
     unittest.main()

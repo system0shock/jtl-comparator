@@ -271,6 +271,59 @@
     }
     .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 
+    /* ── AI-саммари ─────────────────────────────────────────────── */
+    .ai-summary-section {
+      margin-top: 24px;
+    }
+    .ai-summary-section h2 {
+      font-size: 16px;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+    .ai-badge {
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      vertical-align: middle;
+      margin-left: 8px;
+      font-weight: 400;
+    }
+    .ai-summary-box {
+      background: var(--bg2);
+      border: 1px solid rgba(79,142,247,0.35);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+    }
+    .ai-model-select {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 7px 10px;
+      outline: none;
+      cursor: pointer;
+    }
+    .ai-model-select:focus { border-color: var(--accent); }
+
+    .ai-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
     .spinner {
       display: none;
       width: 16px;
@@ -614,6 +667,25 @@
     <button class="btn btn-secondary" id="btnCSV" onclick="downloadCSV()" style="display:none">
       ⬇ Скачать CSV
     </button>
+    <span id="aiModelWrap" style="display:none; align-items:center; gap:6px;">
+      <span style="color:var(--muted); font-size:13px; white-space:nowrap;">Модель GigaChat</span>
+      <span class="help-icon" data-tooltip="GigaChat — базовая, быстрее всего, дешевле всего.
+GigaChat-Pro — расширенные рассуждения, лучше для аналитических задач.
+GigaChat-Max — максимальное качество ответа, медленнее.
+GigaChat-2 / 2-Pro / 2-Max — второе поколение тех же уровней.
+Рекомендация: начните с GigaChat-Pro для баланса качества и скорости.">?</span>
+      <select id="aiModelSelect" class="ai-model-select">
+        <option value="GigaChat">GigaChat</option>
+        <option value="GigaChat-Pro" selected>GigaChat-Pro</option>
+        <option value="GigaChat-Max">GigaChat-Max</option>
+        <option value="GigaChat-2">GigaChat-2</option>
+        <option value="GigaChat-2-Pro">GigaChat-2-Pro</option>
+        <option value="GigaChat-2-Max">GigaChat-2-Max</option>
+      </select>
+    </span>
+    <button class="btn btn-secondary" id="btnAI" onclick="generateAISummary()" style="display:none">
+      ✨ AI-анализ
+    </button>
   </div>
 
   <!-- Ошибка -->
@@ -627,6 +699,12 @@
     <div class="table-wrapper" id="tableWrapper">
       <!-- Заполняется JS -->
     </div>
+  </div>
+
+  <!-- AI-анализ -->
+  <div class="ai-summary-section" id="aiSection" style="display:none">
+    <h2>AI-анализ <span class="ai-badge">GigaChat</span></h2>
+    <div id="aiBox" class="ai-summary-box"></div>
   </div>
 
   <!-- Пустое состояние -->
@@ -813,6 +891,10 @@
 
     document.getElementById('btnMarkdown').style.display = '';
     document.getElementById('btnCSV').style.display = '';
+    document.getElementById('btnAI').style.display = '';
+    document.getElementById('aiModelWrap').style.display = 'inline-flex';
+    // Скрываем старый AI-анализ при перезапуске сравнения
+    document.getElementById('aiSection').style.display = 'none';
 
     const wrapper = document.getElementById('tableWrapper');
 
@@ -928,6 +1010,48 @@
         renderTable(data);
       });
     });
+  }
+
+  // ============================================================
+  // AI-анализ (GigaChat)
+  // ============================================================
+  async function generateAISummary() {
+    const btn = document.getElementById('btnAI');
+    const modelSelect = document.getElementById('aiModelSelect');
+    const aiSection = document.getElementById('aiSection');
+    const aiBox = document.getElementById('aiBox');
+    const aiBadge = aiSection.querySelector('.ai-badge');
+
+    const selectedModel = modelSelect.value;
+
+    btn.disabled = true;
+    modelSelect.disabled = true;
+    btn.innerHTML = '<span class="ai-spinner"></span>Анализируем…';
+    aiSection.style.display = 'none';
+    hideError();
+
+    try {
+      const payload = { ...lastResult, model: selectedModel };
+      const resp = await fetch('/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        showError(data.error || 'Ошибка AI-анализа.');
+        return;
+      }
+      if (aiBadge) aiBadge.textContent = selectedModel;
+      aiBox.textContent = data.text;
+      aiSection.style.display = '';
+    } catch (err) {
+      showError('Ошибка соединения с сервером: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      modelSelect.disabled = false;
+      btn.innerHTML = '✨ AI-анализ';
+    }
   }
 
   // ============================================================

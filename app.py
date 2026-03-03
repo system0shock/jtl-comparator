@@ -11,6 +11,7 @@ from pathlib import Path
 from flask import Flask, render_template, request, jsonify
 
 from analyzers.jtl_analyzer import parse_jtl, compare
+from analyzers.gigachat_client import generate_summary, _load_credentials, AVAILABLE_MODELS
 
 app = Flask(__name__)
 
@@ -96,6 +97,40 @@ def compare_runs():
         for tmp in (tmp1, tmp2):
             if tmp and os.path.exists(tmp):
                 os.remove(tmp)
+
+
+@app.route("/summarize", methods=["POST"])
+def summarize():
+    """
+    Принимает JSON-тело (результат /compare), возвращает AI-саммари от GigaChat.
+
+    Ожидаемое тело запроса (application/json):
+    {"name1": str, "name2": str, "rows": [...], "summary": {...}}
+    """
+    if not _load_credentials():
+        return jsonify({
+            "error": "GigaChat не настроен. Создайте файл gigachat.key в корне проекта."
+        }), 503
+
+    data = request.get_json(force=True, silent=True)
+    if not data or "rows" not in data:
+        return jsonify({"error": "Некорректный запрос: отсутствует поле rows."}), 400
+
+    model = data.get("model", AVAILABLE_MODELS[0])
+
+    try:
+        text = generate_summary(data, model=model)
+        return jsonify({"text": text})
+
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
+
+    except (ValueError, ConnectionError) as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    except Exception as exc:
+        app.logger.exception("Ошибка при генерации AI-саммари")
+        return jsonify({"error": f"Внутренняя ошибка сервера: {exc}"}), 500
 
 
 if __name__ == "__main__":
