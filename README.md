@@ -1,13 +1,29 @@
 # JTL Comparator
 
-Локальное веб-приложение для сравнения результатов нагрузочного тестирования JMeter.
+Локальное веб-приложение для сравнения результатов нагрузочного тестирования JMeter и Gatling.
 
 Актуальный граф кода и связей модулей: [CODE_GRAPH.md](./CODE_GRAPH.md)
 
+## Поддерживаемые форматы
+
+| Формат | Расширение | Инструмент | Примечание |
+|---|---|---|---|
+| JMeter JTL | `.jtl`, `.csv` | JMeter | Стандартный CSV-формат |
+| Gatling simulation.log | `.log` | Gatling 3.8.x — 3.9.x | Raw-лог прогона |
+| Gatling stats.js | `.js` | Gatling 3.8.x — 3.9.x | HTML-отчёт → `js/stats.js` |
+
+Тип файла определяется **автоматически** по содержимому. Оба файла должны быть одного формата.
+
+### Где найти файлы Gatling
+
+- **simulation.log** — создаётся после каждого прогона в директории `results/<simulation-id>/simulation.log`
+- **stats.js** — генерируется при создании HTML-отчёта: `results/<simulation-id>/js/stats.js`
+
 ## Возможности
 
-- Загрузка двух `.jtl` файлов с произвольными именами прогонов
-- Автоматическое определение Transaction Controller vs HTTP-сэмплеров
+- Загрузка двух файлов с произвольными именами прогонов (JMeter или Gatling)
+- Автоматическое определение типа файла и формата транзакций
+- Для JMeter: автоматическое определение Transaction Controller vs HTTP-сэмплеров
 - Агрегация метрик: Samples, Avg, p95, p99, RPS, Error Rate
 - Сравнительная таблица с цветовой подсветкой деградации/улучшения
 - Настраиваемые правила подсветки дельт (time/RPS/error rate) прямо в UI
@@ -164,11 +180,18 @@ python -m unittest tests.test_ui_sorting_playwright -v
 
 ```
 jtl-comparator/
-├── app.py                  # Flask-приложение
+├── app.py                        # Flask-приложение
 ├── analyzers/
-│   └── jtl_analyzer.py     # Парсинг, агрегация, сравнение
+│   ├── jtl_analyzer.py           # Парсинг JTL, агрегация, сравнение
+│   ├── gatling_log_parser.py     # Парсинг Gatling simulation.log
+│   ├── gatling_json_parser.py    # Парсинг Gatling stats.js
+│   └── file_detector.py          # Автоопределение типа файла
 ├── templates/
-│   └── index.html          # Фронтенд (тёмная тема, vanilla JS)
+│   └── index.html                # Фронтенд (тёмная тема, vanilla JS)
+├── tests/
+│   ├── test_jtl_analyzer.py
+│   ├── test_app_api.py
+│   └── test_gatling_parser.py
 ├── requirements.txt
 └── README.md
 ```

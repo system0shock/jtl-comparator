@@ -282,6 +282,20 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ===================== FORMAT BADGE ===================== */
+    .format-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(79,142,247,0.12);
+      border: 1px solid rgba(79,142,247,0.35);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 12px;
+      color: var(--accent);
+      margin-left: 8px;
+    }
+
     /* ===================== ERROR / NOTICE ===================== */
     .alert {
       background: rgba(231,76,60,0.12);
@@ -486,7 +500,7 @@
 <header class="app-header">
   <span style="font-size:22px">⚡</span>
   <h1>JTL Comparator</h1>
-  <span class="subtitle">Сравнение результатов нагрузочного тестирования JMeter</span>
+  <span class="subtitle">Сравнение результатов нагрузочного тестирования JMeter / Gatling</span>
 </header>
 
 <div class="container">
@@ -497,11 +511,11 @@
     <div class="upload-card">
       <input type="text" class="run-name-input" id="name1" value="Baseline" placeholder="Название прогона 1" />
       <div class="drop-zone" id="drop1">
-        <input type="file" id="file1" accept=".jtl,.csv" />
+        <input type="file" id="file1" accept=".jtl,.csv,.log,.js" />
         <div class="drop-icon">📂</div>
         <div class="drop-label">
           <strong>Run 1 — перетащите файл или нажмите</strong>
-          Поддерживается .jtl / .csv (JMeter CSV формат)
+          Поддерживается .jtl/.csv (JMeter), .log (Gatling simulation.log), .js (Gatling stats.js)
         </div>
         <div class="file-name" id="fname1"></div>
       </div>
@@ -510,11 +524,11 @@
     <div class="upload-card">
       <input type="text" class="run-name-input" id="name2" value="Release" placeholder="Название прогона 2" />
       <div class="drop-zone" id="drop2">
-        <input type="file" id="file2" accept=".jtl,.csv" />
+        <input type="file" id="file2" accept=".jtl,.csv,.log,.js" />
         <div class="drop-icon">📂</div>
         <div class="drop-label">
           <strong>Run 2 — перетащите файл или нажмите</strong>
-          Поддерживается .jtl / .csv (JMeter CSV формат)
+          Поддерживается .jtl/.csv (JMeter), .log (Gatling simulation.log), .js (Gatling stats.js)
         </div>
         <div class="file-name" id="fname2"></div>
       </div>
@@ -525,7 +539,7 @@
     <summary>Как пользоваться инструментом</summary>
     <div class="help-panel-body">
       <ol>
-        <li>Задайте имена прогонов и загрузите два JTL-файла (Run 1 — база, Run 2 — новая версия).</li>
+        <li>Задайте имена прогонов и загрузите два файла (JMeter: .jtl/.csv; Gatling: .log или .js из HTML-отчёта). Оба файла должны быть одного формата — тип определяется автоматически.</li>
         <li>При необходимости откройте блок правил и настройте пороги подсветки под ваш SLA.</li>
         <li>Нажмите «Сравнить» и проанализируйте таблицу: время (Avg/p95/p99), RPS и Error Rate.</li>
         <li>Наведите курсор на ячейки Δ%, чтобы увидеть формулу расчета и интерпретацию «лучше/хуже».</li>
@@ -616,6 +630,9 @@
     </button>
   </div>
 
+  <!-- Определённый формат файла -->
+  <div id="formatBadge" style="display:none; margin-bottom: 10px;"></div>
+
   <!-- Ошибка -->
   <div class="alert" id="alert"></div>
 
@@ -632,7 +649,7 @@
   <!-- Пустое состояние -->
   <div class="empty-state" id="emptyState">
     <div class="empty-state-icon">📊</div>
-    <p>Загрузите два JTL-файла и нажмите «Сравнить»</p>
+    <p>Загрузите два файла (JMeter JTL или Gatling simulation.log / stats.js) и нажмите «Сравнить»</p>
   </div>
 
 </div><!-- /container -->
@@ -803,8 +820,23 @@
   // ============================================================
   // Рендер таблицы
   // ============================================================
+  const FILE_TYPE_LABELS = {
+    'jtl':          'JMeter JTL',
+    'gatling_log':  'Gatling simulation.log',
+    'gatling_json': 'Gatling stats.js',
+  };
+
   function renderTable(data) {
-    const { name1, name2, rows, summary, rules } = data;
+    const { name1, name2, rows, summary, rules, file_type } = data;
+
+    // Показываем badge с определённым форматом
+    const badgeEl = document.getElementById('formatBadge');
+    if (file_type && FILE_TYPE_LABELS[file_type]) {
+      badgeEl.innerHTML = `<span class="format-badge">🔍 Формат: ${FILE_TYPE_LABELS[file_type]}</span>`;
+      badgeEl.style.display = '';
+    } else {
+      badgeEl.style.display = 'none';
+    }
 
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('resultSection').style.display = '';
@@ -1010,6 +1042,7 @@
   }
   function hideError() {
     document.getElementById('alert').style.display = 'none';
+    document.getElementById('formatBadge').style.display = 'none';
   }
   function setLoading(on) {
     const btn = document.getElementById('btnCompare');

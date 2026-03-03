@@ -1,5 +1,6 @@
 """
-JTL Comparator — Flask-приложение для сравнения результатов нагрузочного тестирования JMeter.
+JTL Comparator — Flask-приложение для сравнения результатов нагрузочного тестирования.
+Поддерживает JMeter JTL, Gatling simulation.log и Gatling stats.js.
 Запуск: python app.py
 Открыть: http://localhost:5000
 """
@@ -10,7 +11,10 @@ from pathlib import Path
 
 from flask import Flask, render_template, request, jsonify
 
-from analyzers.jtl_analyzer import parse_jtl, compare
+from analyzers.jtl_analyzer import parse_jtl, compare, compare_from_agg
+from analyzers.gatling_log_parser import parse_gatling_log
+from analyzers.gatling_json_parser import parse_gatling_json
+from analyzers.file_detector import detect_file_type
 
 app = Flask(__name__)
 
@@ -27,11 +31,17 @@ def index():
 @app.route("/compare", methods=["POST"])
 def compare_runs():
     """
-    Принимает два JTL-файла и названия прогонов, возвращает JSON с результатами сравнения.
+    Принимает два файла нагрузочного тестирования и названия прогонов,
+    возвращает JSON с результатами сравнения.
+
+    Поддерживаемые форматы (определяются автоматически):
+    - JMeter JTL (.jtl, .csv)
+    - Gatling simulation.log (.log)
+    - Gatling stats.js (.js) из HTML-отчёта
 
     Ожидаемые поля формы:
-    - file1: первый .jtl файл
-    - file2: второй .jtl файл
+    - file1: первый файл
+    - file2: второй файл
     - name1: название первого прогона (строка)
     - name2: название второго прогона (строка)
     """
@@ -74,12 +84,22 @@ def compare_runs():
             file2.save(f2)
             tmp2 = f2.name
 
-        # Парсим оба файла
-        df1 = parse_jtl(tmp1)
-        df2 = parse_jtl(tmp2)
+        # Определяем тип файлов
+        type1 = detect_file_type(tmp1)
+        type2 = detect_file_type(tmp2)
 
-        # Сравниваем и возвращаем результат
-        result = compare(df1, df2, name1, name2, rules=delta_rules)
+        if type1 != type2:
+            return jsonify({
+                "error": (
+                    f"Файлы разных форматов: Run 1 — {_type_label(type1)}, "
+                    f"Run 2 — {_type_label(type2)}. "
+                    "Оба файла должны быть одного формата."
+                )
+            }), 400
+
+        # Парсим и сравниваем в зависимости от типа
+        result = _run_comparison(tmp1, tmp2, type1, name1, name2, delta_rules)
+        result["file_type"] = type1
         return jsonify(result)
 
     except ValueError as exc:
@@ -88,7 +108,7 @@ def compare_runs():
 
     except Exception as exc:
         # Непредвиденные ошибки
-        app.logger.exception("Ошибка при сравнении JTL-файлов")
+        app.logger.exception("Ошибка при сравнении файлов")
         return jsonify({"error": f"Внутренняя ошибка сервера: {exc}"}), 500
 
     finally:
@@ -96,6 +116,42 @@ def compare_runs():
         for tmp in (tmp1, tmp2):
             if tmp and os.path.exists(tmp):
                 os.remove(tmp)
+
+
+def _run_comparison(
+    path1: str,
+    path2: str,
+    file_type: str,
+    name1: str,
+    name2: str,
+    rules: dict,
+) -> dict:
+    """Парсит и сравнивает два файла в зависимости от их формата."""
+    if file_type == "jtl":
+        df1 = parse_jtl(path1)
+        df2 = parse_jtl(path2)
+        return compare(df1, df2, name1, name2, rules=rules)
+
+    if file_type == "gatling_log":
+        df1 = parse_gatling_log(path1)
+        df2 = parse_gatling_log(path2)
+        return compare(df1, df2, name1, name2, rules=rules)
+
+    if file_type == "gatling_json":
+        agg1 = parse_gatling_json(path1)
+        agg2 = parse_gatling_json(path2)
+        return compare_from_agg(agg1, agg2, name1, name2, rules=rules)
+
+    raise ValueError(f"Неизвестный тип файла: {file_type}")
+
+
+def _type_label(file_type: str) -> str:
+    """Возвращает читаемое название типа файла."""
+    return {
+        "jtl": "JMeter JTL",
+        "gatling_log": "Gatling simulation.log",
+        "gatling_json": "Gatling stats.js",
+    }.get(file_type, file_type)
 
 
 if __name__ == "__main__":

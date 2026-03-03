@@ -199,26 +199,27 @@ def _err_css_class(err1: float, err2: float, rules: dict[str, float]) -> str:
     return "neutral"
 
 
-def compare(
-    df1: pd.DataFrame,
-    df2: pd.DataFrame,
+def compare_from_agg(
+    agg1: pd.DataFrame,
+    agg2: pd.DataFrame,
     name1: str,
     name2: str,
     rules: dict | None = None,
 ) -> dict:
     """
-    Сравнивает агрегированные метрики двух прогонов.
+    Сравнивает два уже агрегированных DataFrame (результат aggregate() или gatling_json_parser).
 
-    :param df1: агрегированный DataFrame прогона 1
-    :param df2: агрегированный DataFrame прогона 2
+    Используется напрямую для форматов с предварительной агрегацией (напр., Gatling stats.js).
+    Для сырых данных предпочтительнее compare().
+
+    :param agg1: агрегированный DataFrame прогона 1 (label, samples, avg, p95, p99, throughput, error_rate, ...)
+    :param agg2: агрегированный DataFrame прогона 2
     :param name1: название прогона 1
     :param name2: название прогона 2
+    :param rules: настраиваемые правила подсветки дельт
     :return: словарь с результатами для отдачи в JSON
     """
     active_rules = _normalize_delta_rules(rules)
-
-    agg1 = aggregate(df1)
-    agg2 = aggregate(df2)
 
     # Объединяем по label — outer join, чтобы видеть транзакции из обоих прогонов
     merged = pd.merge(agg1, agg2, on="label", how="outer", suffixes=("_1", "_2"))
@@ -341,3 +342,25 @@ def _build_summary(rows: list[dict], rules: dict[str, float]) -> dict:
         "d_rps_class": _rps_css_class(d_rps, rules),
         "err_class":   _err_css_class(err1, err2, rules) if (err1 is not None and err2 is not None) else "neutral",
     }
+
+
+def compare(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+    name1: str,
+    name2: str,
+    rules: dict | None = None,
+) -> dict:
+    """
+    Сравнивает два сырых DataFrame (результат parse_jtl или parse_gatling_log).
+
+    Агрегирует оба прогона через aggregate(), затем передаёт в compare_from_agg().
+
+    :param df1: сырой DataFrame прогона 1
+    :param df2: сырой DataFrame прогона 2
+    :param name1: название прогона 1
+    :param name2: название прогона 2
+    :param rules: настраиваемые правила подсветки дельт
+    :return: словарь с результатами для отдачи в JSON
+    """
+    return compare_from_agg(aggregate(df1), aggregate(df2), name1, name2, rules)
