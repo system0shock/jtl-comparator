@@ -36,6 +36,45 @@ python app.py
 FLASK_DEBUG=1 HOST=127.0.0.1 PORT=5000 python app.py
 ```
 
+## Релизы
+
+В репозитории настроен автоматический релиз по Git-тегу формата `v*`.
+
+Что делает pipeline:
+
+1. Ставит зависимости.
+2. Запускает автотесты.
+3. Собирает исходные архивы `.tar.gz` и `.zip`.
+4. Считает `SHA256SUMS`.
+5. Публикует GitHub Release с артефактами.
+
+Как выпустить релиз:
+
+```bash
+git checkout master
+git pull
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+Текущая версия проекта хранится в файле `VERSION`.
+
+## Тестирование
+
+Базовые тесты:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+E2E UI (Playwright, опционально):
+
+```bash
+pip install -r requirements-dev.txt
+playwright install chromium
+python -m unittest tests.test_ui_sorting_playwright -v
+```
+
 ## Правила подсветки дельты
 
 Пороги можно менять в блоке **«Правила подсветки дельты»** на странице перед запуском сравнения.

@@ -348,6 +348,21 @@
       border-bottom: 2px solid var(--border);
       white-space: nowrap;
     }
+    th.sortable {
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s;
+    }
+    th.sortable:hover { color: #cbd5ff !important; }
+    th .sort-ind {
+      margin-left: 5px;
+      opacity: .6;
+      font-size: 10px;
+    }
+    th.sortable.active .sort-ind {
+      opacity: 1;
+      color: #cbd5ff;
+    }
 
     tbody tr {
       border-bottom: 1px solid rgba(45,49,73,.7);
@@ -374,6 +389,11 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       font-weight: 500;
+    }
+    td.idx {
+      text-align: right;
+      color: var(--muted);
+      width: 44px;
     }
     td.num { text-align: right; color: var(--muted); }
     td.val { text-align: right; color: var(--text); }
@@ -622,6 +642,7 @@
   // Глобальное хранилище последних результатов (для экспорта)
   // ============================================================
   let lastResult = null;
+  let sortState = { key: 'label', dir: 'asc' };
   const DELTA_RULE_KEYS = [
     'time_warning_pct',
     'time_critical_pct',
@@ -633,6 +654,53 @@
     'err_critical_increase_pct',
     'err_improved_decrease_pct'
   ];
+
+  const SORTABLE_KEYS = new Set([
+    'label',
+    'samples_1', 'avg_1', 'p95_1', 'p99_1', 'rps_1', 'err_1',
+    'samples_2', 'avg_2', 'p95_2', 'p99_2', 'rps_2', 'err_2',
+    'd_avg', 'd_p95', 'd_p99', 'd_rps'
+  ]);
+
+  function getSortedRows(rows) {
+    const list = [...(rows || [])];
+    const { key, dir } = sortState;
+    if (!SORTABLE_KEYS.has(key)) return list;
+
+    const sign = dir === 'desc' ? -1 : 1;
+    list.sort((a, b) => {
+      const av = a?.[key];
+      const bv = b?.[key];
+
+      if (key === 'label') {
+        return sign * String(av ?? '').localeCompare(String(bv ?? ''), 'ru');
+      }
+
+      const aNull = av === null || av === undefined;
+      const bNull = bv === null || bv === undefined;
+      if (aNull && bNull) return String(a?.label ?? '').localeCompare(String(b?.label ?? ''), 'ru');
+      if (aNull) return 1;
+      if (bNull) return -1;
+
+      const an = Number(av);
+      const bn = Number(bv);
+      if (Number.isNaN(an) || Number.isNaN(bn)) {
+        return sign * String(av).localeCompare(String(bv), 'ru');
+      }
+      if (an === bn) return String(a?.label ?? '').localeCompare(String(b?.label ?? ''), 'ru');
+      return sign * (an - bn);
+    });
+    return list;
+  }
+
+  function sortIndicator(key) {
+    if (sortState.key !== key) return '↕';
+    return sortState.dir === 'asc' ? '↑' : '↓';
+  }
+
+  function sortClass(key) {
+    return sortState.key === key ? 'sortable active' : 'sortable';
+  }
 
   // ============================================================
   // Drag & Drop
@@ -777,13 +845,14 @@
     }
 
     // Строки тела таблицы
-    const makeRow = (row, isSummary) => {
+    const makeRow = (row, isSummary, idx) => {
       const cls = isSummary ? ' class="summary-row"' : '';
       const tipAvg = deltaTooltip('Δ Avg%', row.avg_1, row.avg_2, row.d_avg, 'time');
       const tipP95 = deltaTooltip('Δ p95%', row.p95_1, row.p95_2, row.d_p95, 'time');
       const tipP99 = deltaTooltip('Δ p99%', row.p99_1, row.p99_2, row.d_p99, 'time');
       const tipRps = deltaTooltip('Δ RPS%', row.rps_1, row.rps_2, row.d_rps, 'rps');
       return `<tr${cls}>
+        <td class="idx">${isSummary ? 'Σ' : idx}</td>
         <td class="label-cell" title="${esc(row.label)}">${esc(row.label)}</td>
         <td class="num">${fmtVal(row.samples_1)}</td>
         <td class="val">${fmtVal(row.avg_1)}</td>
@@ -806,22 +875,37 @@
       </tr>`;
     };
 
-    const bodyRows = rows.map(r => makeRow(r, false)).join('');
-    const summaryRow = summary ? makeRow(summary, true) : '';
+    const sortedRows = getSortedRows(rows);
+    const bodyRows = sortedRows.map((r, i) => makeRow(r, false, i + 1)).join('');
+    const summaryRow = summary ? makeRow(summary, true, null) : '';
 
     wrapper.innerHTML = `
       <table id="mainTable">
         <thead>
           <tr>
-            <th rowspan="2" class="label-cell">Транзакция</th>
+            <th rowspan="2">№</th>
+            <th rowspan="2" class="label-cell ${sortClass('label')}" data-sort-key="label">Транзакция<span class="sort-ind">${sortIndicator('label')}</span></th>
             <th colspan="6" style="text-align:center;border-bottom:1px solid var(--border)">${esc(name1)}</th>
             <th colspan="6" class="sep" style="text-align:center;border-bottom:1px solid var(--border)">${esc(name2)}</th>
             <th colspan="4" class="sep" style="text-align:center;border-bottom:1px solid var(--border)">Δ (R2 vs R1)</th>
           </tr>
           <tr>
-            <th>Samples</th><th>Avg ms</th><th>p95 ms</th><th>p99 ms</th><th>RPS</th><th>Err%</th>
-            <th class="sep">Samples</th><th>Avg ms</th><th>p95 ms</th><th>p99 ms</th><th>RPS</th><th>Err%</th>
-            <th class="sep">Δ Avg%</th><th>Δ p95%</th><th>Δ p99%</th><th>Δ RPS%</th>
+            <th class="${sortClass('samples_1')}" data-sort-key="samples_1">Samples<span class="sort-ind">${sortIndicator('samples_1')}</span></th>
+            <th class="${sortClass('avg_1')}" data-sort-key="avg_1">Avg ms<span class="sort-ind">${sortIndicator('avg_1')}</span></th>
+            <th class="${sortClass('p95_1')}" data-sort-key="p95_1">p95 ms<span class="sort-ind">${sortIndicator('p95_1')}</span></th>
+            <th class="${sortClass('p99_1')}" data-sort-key="p99_1">p99 ms<span class="sort-ind">${sortIndicator('p99_1')}</span></th>
+            <th class="${sortClass('rps_1')}" data-sort-key="rps_1">RPS<span class="sort-ind">${sortIndicator('rps_1')}</span></th>
+            <th class="${sortClass('err_1')}" data-sort-key="err_1">Err%<span class="sort-ind">${sortIndicator('err_1')}</span></th>
+            <th class="sep ${sortClass('samples_2')}" data-sort-key="samples_2">Samples<span class="sort-ind">${sortIndicator('samples_2')}</span></th>
+            <th class="${sortClass('avg_2')}" data-sort-key="avg_2">Avg ms<span class="sort-ind">${sortIndicator('avg_2')}</span></th>
+            <th class="${sortClass('p95_2')}" data-sort-key="p95_2">p95 ms<span class="sort-ind">${sortIndicator('p95_2')}</span></th>
+            <th class="${sortClass('p99_2')}" data-sort-key="p99_2">p99 ms<span class="sort-ind">${sortIndicator('p99_2')}</span></th>
+            <th class="${sortClass('rps_2')}" data-sort-key="rps_2">RPS<span class="sort-ind">${sortIndicator('rps_2')}</span></th>
+            <th class="${sortClass('err_2')}" data-sort-key="err_2">Err%<span class="sort-ind">${sortIndicator('err_2')}</span></th>
+            <th class="sep ${sortClass('d_avg')}" data-sort-key="d_avg">Δ Avg%<span class="sort-ind">${sortIndicator('d_avg')}</span></th>
+            <th class="${sortClass('d_p95')}" data-sort-key="d_p95">Δ p95%<span class="sort-ind">${sortIndicator('d_p95')}</span></th>
+            <th class="${sortClass('d_p99')}" data-sort-key="d_p99">Δ p99%<span class="sort-ind">${sortIndicator('d_p99')}</span></th>
+            <th class="${sortClass('d_rps')}" data-sort-key="d_rps">Δ RPS%<span class="sort-ind">${sortIndicator('d_rps')}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -829,6 +913,21 @@
           ${summaryRow}
         </tbody>
       </table>`;
+
+    wrapper.querySelectorAll('th[data-sort-key]').forEach((th) => {
+      th.classList.add('sortable');
+      th.addEventListener('click', () => {
+        const key = th.getAttribute('data-sort-key');
+        if (!key) return;
+        if (sortState.key === key) {
+          sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          sortState.key = key;
+          sortState.dir = 'asc';
+        }
+        renderTable(data);
+      });
+    });
   }
 
   // ============================================================
@@ -837,18 +936,21 @@
   function copyMarkdown() {
     if (!lastResult) return;
     const { name1, name2, rows, summary } = lastResult;
+    const sortedRows = getSortedRows(rows);
 
     const fmtD = (v) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v + '%';
     const fv   = (v) => v === null || v === undefined ? '—' : v;
     const fpct = (v) => v === null || v === undefined ? '—' : `${v}%`;
 
-    const header = `| Транзакция | Samples ${name1} | Avg ${name1} | p95 ${name1} | p99 ${name1} | RPS ${name1} | Err% ${name1} | Samples ${name2} | Avg ${name2} | p95 ${name2} | p99 ${name2} | RPS ${name2} | Err% ${name2} | Δ Avg% | Δ p95% | Δ p99% | Δ RPS% |`;
-    const sep = `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`;
+    const header = `| № | Транзакция | Samples ${name1} | Avg ${name1} | p95 ${name1} | p99 ${name1} | RPS ${name1} | Err% ${name1} | Samples ${name2} | Avg ${name2} | p95 ${name2} | p99 ${name2} | RPS ${name2} | Err% ${name2} | Δ Avg% | Δ p95% | Δ p99% | Δ RPS% |`;
+    const sep = `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`;
 
-    const makeRow = (r) =>
-      `| ${r.label} | ${fv(r.samples_1)} | ${fv(r.avg_1)} | ${fv(r.p95_1)} | ${fv(r.p99_1)} | ${fv(r.rps_1)} | ${fpct(r.err_1)} | ${fv(r.samples_2)} | ${fv(r.avg_2)} | ${fv(r.p95_2)} | ${fv(r.p99_2)} | ${fv(r.rps_2)} | ${fpct(r.err_2)} | ${fmtD(r.d_avg)} | ${fmtD(r.d_p95)} | ${fmtD(r.d_p99)} | ${fmtD(r.d_rps)} |`;
+    const makeRow = (r, idx, isSummary = false) =>
+      `| ${isSummary ? 'Σ' : idx} | ${r.label} | ${fv(r.samples_1)} | ${fv(r.avg_1)} | ${fv(r.p95_1)} | ${fv(r.p99_1)} | ${fv(r.rps_1)} | ${fpct(r.err_1)} | ${fv(r.samples_2)} | ${fv(r.avg_2)} | ${fv(r.p95_2)} | ${fv(r.p99_2)} | ${fv(r.rps_2)} | ${fpct(r.err_2)} | ${fmtD(r.d_avg)} | ${fmtD(r.d_p95)} | ${fmtD(r.d_p99)} | ${fmtD(r.d_rps)} |`;
 
-    const allRows = [...rows, ...(summary ? [summary] : [])].map(makeRow).join('\n');
+    const rowLines = sortedRows.map((r, idx) => makeRow(r, idx + 1, false));
+    if (summary) rowLines.push(makeRow(summary, null, true));
+    const allRows = rowLines.join('\n');
     const md = [header, sep, allRows].join('\n');
 
     navigator.clipboard.writeText(md).then(() => {
@@ -864,25 +966,29 @@
   function downloadCSV() {
     if (!lastResult) return;
     const { name1, name2, rows, summary } = lastResult;
+    const sortedRows = getSortedRows(rows);
 
     const fv = (v) => v === null || v === undefined ? '' : v;
     const fmtD = (v) => v === null || v === undefined ? '' : (v > 0 ? '+' : '') + v + '%';
 
     const headers = [
+      '№',
       'Транзакция',
       `Samples ${name1}`, `Avg ${name1}`, `p95 ${name1}`, `p99 ${name1}`, `RPS ${name1}`, `Err% ${name1}`,
       `Samples ${name2}`, `Avg ${name2}`, `p95 ${name2}`, `p99 ${name2}`, `RPS ${name2}`, `Err% ${name2}`,
       'Δ Avg%', 'Δ p95%', 'Δ p99%', 'Δ RPS%'
     ];
 
-    const makeRow = (r) => [
+    const makeRow = (r, idx, isSummary = false) => [
+      isSummary ? 'Σ' : idx,
       `"${(r.label || '').replace(/"/g, '""')}"`,
       fv(r.samples_1), fv(r.avg_1), fv(r.p95_1), fv(r.p99_1), fv(r.rps_1), fv(r.err_1),
       fv(r.samples_2), fv(r.avg_2), fv(r.p95_2), fv(r.p99_2), fv(r.rps_2), fv(r.err_2),
       fmtD(r.d_avg), fmtD(r.d_p95), fmtD(r.d_p99), fmtD(r.d_rps)
     ].join(',');
 
-    const allRows = [...rows, ...(summary ? [summary] : [])].map(makeRow);
+    const allRows = sortedRows.map((r, idx) => makeRow(r, idx + 1, false));
+    if (summary) allRows.push(makeRow(summary, null, true));
     const csv = '\uFEFF' + [headers.join(','), ...allRows].join('\r\n'); // BOM для Excel
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });

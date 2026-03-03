@@ -102,6 +102,8 @@ templates/index.html
 
   Render/export:
     renderTable()
+      - сортировка по клику на заголовки (label + все числовые колонки)
+      - нумерация строк после сортировки (№)
     copyMarkdown()
     downloadCSV()
 
@@ -119,6 +121,8 @@ templates/index.html
 - Custom styled tooltips for:
   - delta cells (`Δ Avg`, `Δ p95`, `Δ p99`, `Δ RPS`)
   - rule fields (`?` hints)
+- Сортировка транзакций по имени и по всем параметрам таблицы.
+- Нумерация строк в таблице и экспортах (Markdown/CSV).
 - Tooltip text includes:
   - formula
   - concrete Run1/Run2 values
