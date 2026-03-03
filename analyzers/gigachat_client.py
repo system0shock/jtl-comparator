@@ -39,6 +39,18 @@ AVAILABLE_MODELS: list[str] = [
 ]
 _TIMEOUT   = 30  # секунды
 
+# Лимиты строк по секциям промпта — адаптированы под контекстное окно каждой модели.
+# Структура: {"critical": N, "warning": N, "improved": N}
+_MODEL_SECTION_SIZES: dict[str, dict[str, int]] = {
+    "GigaChat":       {"critical": 3, "warning": 3, "improved": 2},
+    "GigaChat-Pro":   {"critical": 5, "warning": 5, "improved": 3},
+    "GigaChat-Max":   {"critical": 8, "warning": 8, "improved": 5},
+    "GigaChat-2":     {"critical": 8, "warning": 8, "improved": 5},
+    "GigaChat-2-Pro": {"critical": 10, "warning": 10, "improved": 5},
+    "GigaChat-2-Max": {"critical": 15, "warning": 15, "improved": 8},
+}
+_DEFAULT_SECTION_SIZES: dict[str, int] = {"critical": 3, "warning": 3, "improved": 2}
+
 # ── Файл с credentials ────────────────────────────────────────────────────────
 
 # gigachat.key лежит в корне проекта (на уровень выше analyzers/)
@@ -99,17 +111,24 @@ def _get_access_token(credentials_b64: str) -> str:
 
 # ── Построение промпта ────────────────────────────────────────────────────────
 
-_CLASS_ORDER = {"critical": 0, "warning": 1, "neutral": 2, "improved": 3}
 
-
-def build_prompt(data: dict, top_n: int = 5) -> str:
+def build_prompt(data: dict, section_sizes: dict[str, int] | None = None) -> str:
     """
     Строит промпт для GigaChat на основе результатов /compare.
 
-    :param data:  словарь из compare() — поля name1, name2, summary, rows.
-    :param top_n: максимальное количество транзакций в разделе деградаций.
-    :return:      строка промпта.
+    Промпт структурирован по секциям severity (critical / warning / improved),
+    содержит distribution-строку с полным распределением транзакций и секцию
+    новых/выбывших транзакций. Это даёт LLM контекст масштаба независимо от
+    общего числа транзакций.
+
+    :param data:          словарь из compare() — поля name1, name2, summary, rows.
+    :param section_sizes: лимиты строк по классам {"critical": N, "warning": N, "improved": N}.
+                          По умолчанию используется _DEFAULT_SECTION_SIZES.
+    :return:              строка промпта.
     """
+    if section_sizes is None:
+        section_sizes = _DEFAULT_SECTION_SIZES
+
     name1: str = data.get("name1", "Run 1")
     name2: str = data.get("name2", "Run 2")
     summary: dict | None = data.get("summary")
@@ -119,7 +138,6 @@ def build_prompt(data: dict, top_n: int = 5) -> str:
         return f"{v:.{decimals}f}" if v is not None else "—"
 
     # ── Сводная строка ─────────────────────────────────────────────────────────
-    summary_block = ""
     if summary:
         summary_block = (
             f"| Avg (мс)  | {fmt(summary.get('avg_1'))} | {fmt(summary.get('avg_2'))} | {fmt(summary.get('d_avg'))}% |\n"
@@ -131,57 +149,102 @@ def build_prompt(data: dict, top_n: int = 5) -> str:
     else:
         summary_block = "_Сводные данные недоступны._\n"
 
-    # ── Топ деградаций ─────────────────────────────────────────────────────────
-    # Берём строки с обоими прогонами, сортируем: critical → warning → neutral → improved,
-    # внутри группы — по убыванию |d_avg|.
-    both_rows = [r for r in rows if r.get("avg_1") is not None and r.get("avg_2") is not None]
-    sorted_rows = sorted(
-        both_rows,
-        key=lambda r: (
-            _CLASS_ORDER.get(r.get("d_avg_class", "neutral"), 2),
-            -(abs(r["d_avg"]) if r.get("d_avg") is not None else 0),
-        ),
-    )
-    top = sorted_rows[:top_n]
+    # ── Классификация строк по severity ────────────────────────────────────────
+    both_rows   = [r for r in rows if r.get("avg_1") is not None and r.get("avg_2") is not None]
+    only_r1_rows = [r for r in rows if r.get("avg_2") is None]
+    only_r2_rows = [r for r in rows if r.get("avg_1") is None]
 
-    if top:
-        top_block = "\n".join(
-            f"| {r['label']} | {fmt(r.get('avg_1'))} | {fmt(r.get('avg_2'))} "
-            f"| {fmt(r.get('d_avg'))}% ({r.get('d_avg_class','—')}) "
-            f"| {fmt(r.get('d_p99'))}% | {fmt(r.get('err_2'))}% |"
-            for r in top
-        )
-        top_section = (
-            "## Топ транзакций с деградацией\n"
+    by_class: dict[str, list[dict]] = {"critical": [], "warning": [], "neutral": [], "improved": []}
+    for r in both_rows:
+        by_class.setdefault(r.get("d_avg_class", "neutral"), []).append(r)
+    # Внутри каждой группы — по убыванию |d_avg|
+    for bucket in by_class.values():
+        bucket.sort(key=lambda r: -(abs(r.get("d_avg") or 0)))
+
+    n_critical = len(by_class["critical"])
+    n_warning  = len(by_class["warning"])
+    n_neutral  = len(by_class["neutral"])
+    n_improved = len(by_class["improved"])
+    n_only_r1  = len(only_r1_rows)
+    n_only_r2  = len(only_r2_rows)
+    total      = len(rows)
+
+    distribution = (
+        f"{n_critical} critical, {n_warning} warning, "
+        f"{n_neutral} neutral, {n_improved} improved"
+        + (f" | только в {name1}: {n_only_r1}" if n_only_r1 else "")
+        + (f", только в {name2}: {n_only_r2}" if n_only_r2 else "")
+    )
+
+    # ── Построитель одной секции таблицы ───────────────────────────────────────
+    def _section(title: str, bucket: list[dict], limit: int) -> str:
+        if not bucket:
+            return f"### {title}\n_Нет транзакций._\n"
+        top = bucket[:limit]
+        header = (
             f"| Транзакция | Avg {name1} | Avg {name2} | Δ Avg% | Δ p99% | Err% {name2} |\n"
             "|---|---|---|---|---|---|\n"
-            + top_block
         )
-    else:
-        top_section = "## Топ транзакций с деградацией\n_Нет данных для сравнения._"
+        body = "\n".join(
+            f"| {r['label']} | {fmt(r.get('avg_1'))} | {fmt(r.get('avg_2'))} "
+            f"| {fmt(r.get('d_avg'))}% | {fmt(r.get('d_p99'))}% | {fmt(r.get('err_2'))}% |"
+            for r in top
+        )
+        tail = f"\n_(показано {len(top)} из {len(bucket)})_" if len(bucket) > limit else ""
+        return f"### {title}\n{header}{body}{tail}\n"
 
-    total = len(rows)
-    only_r1 = sum(1 for r in rows if r.get("avg_2") is None)
-    only_r2 = sum(1 for r in rows if r.get("avg_1") is None)
+    critical_section = _section(
+        f"Критические деградации ({n_critical})",
+        by_class["critical"],
+        section_sizes.get("critical", 3),
+    )
+    warning_section = _section(
+        f"Предупреждения ({n_warning})",
+        by_class["warning"],
+        section_sizes.get("warning", 3),
+    )
+    improved_section = _section(
+        f"Улучшения ({n_improved})",
+        by_class["improved"],
+        section_sizes.get("improved", 2),
+    )
+
+    # ── Новые / выбывшие транзакции ────────────────────────────────────────────
+    drift_lines: list[str] = []
+    if only_r1_rows:
+        examples = ", ".join(r["label"] for r in only_r1_rows[:3])
+        extra = f" и ещё {n_only_r1 - 3}" if n_only_r1 > 3 else ""
+        drift_lines.append(f"- Выбыли из {name2} ({n_only_r1}): {examples}{extra}")
+    if only_r2_rows:
+        examples = ", ".join(r["label"] for r in only_r2_rows[:3])
+        extra = f" и ещё {n_only_r2 - 3}" if n_only_r2 > 3 else ""
+        drift_lines.append(f"- Новые в {name2} ({n_only_r2}): {examples}{extra}")
+    drift_section = (
+        "### Новые / выбывшие транзакции\n" + "\n".join(drift_lines) + "\n\n"
+        if drift_lines else ""
+    )
 
     prompt = f"""Ты эксперт по нагрузочному тестированию. Проанализируй результаты сравнения двух прогонов JMeter.
 
 Прогон 1 (база): {name1}
 Прогон 2 (новая версия): {name2}
-Всего транзакций: {total} (только в Run1: {only_r1}, только в Run2: {only_r2})
+Всего транзакций: {total} ({distribution})
 
 ## Сводные метрики
 | Метрика | {name1} | {name2} | Δ% |
 |---|---|---|---|
 {summary_block}
-{top_section}
+## Детализация по категориям
 
-Дай анализ в 3–5 абзацах на русском языке:
+{critical_section}
+{warning_section}
+{improved_section}
+{drift_section}Дай анализ в 3–5 абзацах на русском языке:
 1. Общая оценка — прогон 2 деградировал или улучшился относительно базы?
 2. Критические проблемы (если есть): какие транзакции и насколько деградировали.
 3. Что осталось стабильным или улучшилось.
-4. Практические рекомендации для инженера по нагрузочному тестированию.
-Будь конкретным — используй цифры из таблицы."""
+4. Практические рекомендации — только конкретные выводы из данных таблицы, без общих советов.
+Используй цифры из таблицы. Не давай рекомендаций, которые не следуют напрямую из приведённых данных."""
 
     return prompt
 
@@ -217,7 +280,8 @@ def generate_summary(data: dict, model: str = _MODEL) -> str:
     except requests.exceptions.RequestException as exc:
         raise ConnectionError(f"Не удалось получить токен GigaChat: {exc}") from exc
 
-    prompt = build_prompt(data)
+    section_sizes = _MODEL_SECTION_SIZES.get(model, _DEFAULT_SECTION_SIZES)
+    prompt = build_prompt(data, section_sizes=section_sizes)
 
     try:
         resp = requests.post(
