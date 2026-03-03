@@ -178,8 +178,8 @@ def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dic
         p95_1, p95_2 = val("p95_1"), val("p95_2")
         p99_1, p99_2 = val("p99_1"), val("p99_2")
         rps1, rps2 = val("throughput_1"), val("throughput_2")
-        err1 = val("error_rate_1") or 0.0
-        err2 = val("error_rate_2") or 0.0
+        err1 = val("error_rate_1")
+        err2 = val("error_rate_2")
 
         d_avg = _delta_pct(avg1 or 0, avg2 or 0) if (avg1 is not None and avg2 is not None) else None
         d_p95 = _delta_pct(p95_1 or 0, p95_2 or 0) if (p95_1 is not None and p95_2 is not None) else None
@@ -194,14 +194,14 @@ def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dic
             "p95_1":       p95_1,
             "p99_1":       p99_1,
             "rps_1":       rps1,
-            "err_1":       round(err1, 2),
+            "err_1":       round(err1, 2) if err1 is not None else None,
             # Прогон 2
             "samples_2":   val("samples_2"),
             "avg_2":       avg2,
             "p95_2":       p95_2,
             "p99_2":       p99_2,
             "rps_2":       rps2,
-            "err_2":       round(err2, 2),
+            "err_2":       round(err2, 2) if err2 is not None else None,
             # Дельты и классы
             "d_avg":       d_avg,
             "d_avg_class": _time_css_class(d_avg),
@@ -211,12 +211,12 @@ def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dic
             "d_p99_class": _time_css_class(d_p99),
             "d_rps":       d_rps,
             "d_rps_class": _rps_css_class(d_rps),
-            "err_class":   _err_css_class(err1, err2),
+            "err_class":   _err_css_class(err1, err2) if (err1 is not None and err2 is not None) else "neutral",
         })
 
     # Summary: средние значения по всем транзакциям (только где есть оба прогона)
     both = [r for r in rows if r["avg_1"] is not None and r["avg_2"] is not None]
-    summary = _build_summary(both, name1, name2) if both else None
+    summary = _build_summary(both) if both else None
 
     return {
         "name1":   name1,
@@ -226,27 +226,37 @@ def compare(df1: pd.DataFrame, df2: pd.DataFrame, name1: str, name2: str) -> dic
     }
 
 
-def _build_summary(rows: list[dict], name1: str, name2: str) -> dict:
-    """Строит строку Summary — среднее по всем транзакциям."""
-    def avg_metric(key: str) -> float | None:
-        vals = [r[key] for r in rows if r.get(key) is not None]
-        return round(sum(vals) / len(vals), 1) if vals else None
+def _build_summary(rows: list[dict]) -> dict:
+    """Строит строку Summary — взвешенные средние по всем транзакциям (вес = samples)."""
+    def weighted_avg_metric(value_key: str, weight_key: str) -> float | None:
+        total_weight = 0.0
+        weighted_sum = 0.0
+        for r in rows:
+            value = r.get(value_key)
+            weight = r.get(weight_key)
+            if value is None or weight is None or weight <= 0:
+                continue
+            total_weight += float(weight)
+            weighted_sum += float(value) * float(weight)
+        if total_weight == 0:
+            return None
+        return round(weighted_sum / total_weight, 1)
 
-    avg1 = avg_metric("avg_1")
-    avg2 = avg_metric("avg_2")
-    p95_1 = avg_metric("p95_1")
-    p95_2 = avg_metric("p95_2")
-    p99_1 = avg_metric("p99_1")
-    p99_2 = avg_metric("p99_2")
-    rps1 = avg_metric("rps_1")
-    rps2 = avg_metric("rps_2")
-    err1 = avg_metric("err_1") or 0.0
-    err2 = avg_metric("err_2") or 0.0
+    avg1 = weighted_avg_metric("avg_1", "samples_1")
+    avg2 = weighted_avg_metric("avg_2", "samples_2")
+    p95_1 = weighted_avg_metric("p95_1", "samples_1")
+    p95_2 = weighted_avg_metric("p95_2", "samples_2")
+    p99_1 = weighted_avg_metric("p99_1", "samples_1")
+    p99_2 = weighted_avg_metric("p99_2", "samples_2")
+    rps1 = weighted_avg_metric("rps_1", "samples_1")
+    rps2 = weighted_avg_metric("rps_2", "samples_2")
+    err1 = weighted_avg_metric("err_1", "samples_1")
+    err2 = weighted_avg_metric("err_2", "samples_2")
 
-    d_avg = _delta_pct(avg1 or 0, avg2 or 0)
-    d_p95 = _delta_pct(p95_1 or 0, p95_2 or 0)
-    d_p99 = _delta_pct(p99_1 or 0, p99_2 or 0)
-    d_rps = _delta_pct(rps1 or 0, rps2 or 0)
+    d_avg = _delta_pct(avg1, avg2) if (avg1 is not None and avg2 is not None) else None
+    d_p95 = _delta_pct(p95_1, p95_2) if (p95_1 is not None and p95_2 is not None) else None
+    d_p99 = _delta_pct(p99_1, p99_2) if (p99_1 is not None and p99_2 is not None) else None
+    d_rps = _delta_pct(rps1, rps2) if (rps1 is not None and rps2 is not None) else None
 
     return {
         "label":       "SUMMARY (avg)",
@@ -255,13 +265,13 @@ def _build_summary(rows: list[dict], name1: str, name2: str) -> dict:
         "p95_1":       p95_1,
         "p99_1":       p99_1,
         "rps_1":       rps1,
-        "err_1":       round(err1, 2),
+        "err_1":       round(err1, 2) if err1 is not None else None,
         "samples_2":   sum(r["samples_2"] for r in rows if r.get("samples_2")),
         "avg_2":       avg2,
         "p95_2":       p95_2,
         "p99_2":       p99_2,
         "rps_2":       rps2,
-        "err_2":       round(err2, 2),
+        "err_2":       round(err2, 2) if err2 is not None else None,
         "d_avg":       d_avg,
         "d_avg_class": _time_css_class(d_avg),
         "d_p95":       d_p95,
@@ -270,5 +280,5 @@ def _build_summary(rows: list[dict], name1: str, name2: str) -> dict:
         "d_p99_class": _time_css_class(d_p99),
         "d_rps":       d_rps,
         "d_rps_class": _rps_css_class(d_rps),
-        "err_class":   _err_css_class(err1, err2),
+        "err_class":   _err_css_class(err1, err2) if (err1 is not None and err2 is not None) else "neutral",
     }

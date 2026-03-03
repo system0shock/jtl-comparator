@@ -495,6 +495,7 @@
 
     const fmtDelta = (v) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v + '%';
     const fmtVal   = (v) => v === null || v === undefined ? '—' : v;
+    const fmtPct   = (v) => v === null || v === undefined ? '—' : `${v}%`;
 
     // Строки тела таблицы
     const makeRow = (row, isSummary) => {
@@ -506,14 +507,14 @@
         <td class="val">${fmtVal(row.p95_1)}</td>
         <td class="val">${fmtVal(row.p99_1)}</td>
         <td class="val">${fmtVal(row.rps_1)}</td>
-        <td class="val err ${row.err_class}">${fmtVal(row.err_1)}%</td>
+        <td class="val err ${row.err_class}">${fmtPct(row.err_1)}</td>
 
         <td class="num sep">${fmtVal(row.samples_2)}</td>
         <td class="val">${fmtVal(row.avg_2)}</td>
         <td class="val">${fmtVal(row.p95_2)}</td>
         <td class="val">${fmtVal(row.p99_2)}</td>
         <td class="val">${fmtVal(row.rps_2)}</td>
-        <td class="val err ${row.err_class}">${fmtVal(row.err_2)}%</td>
+        <td class="val err ${row.err_class}">${fmtPct(row.err_2)}</td>
 
         <td class="delta sep ${row.d_avg_class}">${fmtDelta(row.d_avg)}</td>
         <td class="delta ${row.d_p95_class}">${fmtDelta(row.d_p95)}</td>
@@ -556,12 +557,13 @@
 
     const fmtD = (v) => v === null || v === undefined ? '—' : (v > 0 ? '+' : '') + v + '%';
     const fv   = (v) => v === null || v === undefined ? '—' : v;
+    const fpct = (v) => v === null || v === undefined ? '—' : `${v}%`;
 
     const header = `| Транзакция | Samples ${name1} | Avg ${name1} | p95 ${name1} | p99 ${name1} | RPS ${name1} | Err% ${name1} | Samples ${name2} | Avg ${name2} | p95 ${name2} | p99 ${name2} | RPS ${name2} | Err% ${name2} | Δ Avg% | Δ p95% | Δ p99% | Δ RPS% |`;
     const sep = `|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|`;
 
     const makeRow = (r) =>
-      `| ${r.label} | ${fv(r.samples_1)} | ${fv(r.avg_1)} | ${fv(r.p95_1)} | ${fv(r.p99_1)} | ${fv(r.rps_1)} | ${fv(r.err_1)}% | ${fv(r.samples_2)} | ${fv(r.avg_2)} | ${fv(r.p95_2)} | ${fv(r.p99_2)} | ${fv(r.rps_2)} | ${fv(r.err_2)}% | ${fmtD(r.d_avg)} | ${fmtD(r.d_p95)} | ${fmtD(r.d_p99)} | ${fmtD(r.d_rps)} |`;
+      `| ${r.label} | ${fv(r.samples_1)} | ${fv(r.avg_1)} | ${fv(r.p95_1)} | ${fv(r.p99_1)} | ${fv(r.rps_1)} | ${fpct(r.err_1)} | ${fv(r.samples_2)} | ${fv(r.avg_2)} | ${fv(r.p95_2)} | ${fv(r.p99_2)} | ${fv(r.rps_2)} | ${fpct(r.err_2)} | ${fmtD(r.d_avg)} | ${fmtD(r.d_p95)} | ${fmtD(r.d_p99)} | ${fmtD(r.d_rps)} |`;
 
     const allRows = [...rows, ...(summary ? [summary] : [])].map(makeRow).join('\n');
     const md = [header, sep, allRows].join('\n');
