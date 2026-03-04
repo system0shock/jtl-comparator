@@ -107,15 +107,25 @@ def _build_ssl_context() -> "ssl.SSLContext | None":
     Build SSL context from env and optional config file.
     TLS_CERT + TLS_KEY enable HTTPS.
     TLS_CA enables client certificate verification (mTLS).
-    If TLS_CERT or TLS_KEY are missing, return None and run over HTTP.
+    Partial TLS_CERT/TLS_KEY env config is treated as an error.
+    If both are missing, return None and run over HTTP.
     """
     import ssl
 
+    env_cert = (os.getenv("TLS_CERT") or "").strip()
+    env_key = (os.getenv("TLS_KEY") or "").strip()
+    env_ca = (os.getenv("TLS_CA") or "").strip()
+
+    if bool(env_cert) ^ bool(env_key):
+        raise RuntimeError(
+            "Partial TLS env configuration: TLS_CERT and TLS_KEY must be set together."
+        )
+
     explicit_tls_config = bool(os.getenv("TLS_CONFIG", "").strip())
     tls_cfg = _load_tls_config()
-    cert = os.getenv("TLS_CERT") or tls_cfg.get("TLS_CERT")
-    key = os.getenv("TLS_KEY") or tls_cfg.get("TLS_KEY")
-    ca = os.getenv("TLS_CA") or tls_cfg.get("TLS_CA")
+    cert = env_cert or tls_cfg.get("TLS_CERT")
+    key = env_key or tls_cfg.get("TLS_KEY")
+    ca = env_ca or tls_cfg.get("TLS_CA")
 
     if not cert or not key:
         if explicit_tls_config:

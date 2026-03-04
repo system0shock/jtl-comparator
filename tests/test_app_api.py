@@ -1,7 +1,9 @@
 import io
+import os
 import unittest
+from unittest import mock
 
-from app import app
+from app import app, _build_ssl_context
 
 
 def _jtl_csv(rows: list[dict]) -> str:
@@ -205,6 +207,36 @@ class CompareApiTests(unittest.TestCase):
         payload = resp.get_json()
         self.assertIn("error", payload)
         self.assertIn("требует колонку URL", payload["error"])
+
+
+class TlsConfigTests(unittest.TestCase):
+    def test_build_ssl_context_raises_on_partial_env_with_only_cert(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TLS_CERT": "/tmp/server.crt",
+            },
+            clear=False,
+        ):
+            os.environ.pop("TLS_KEY", None)
+            os.environ.pop("TLS_CA", None)
+            os.environ.pop("TLS_CONFIG", None)
+            with self.assertRaisesRegex(RuntimeError, "TLS_CERT and TLS_KEY must be set together"):
+                _build_ssl_context()
+
+    def test_build_ssl_context_raises_on_partial_env_with_only_key(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "TLS_KEY": "/tmp/server.key",
+            },
+            clear=False,
+        ):
+            os.environ.pop("TLS_CERT", None)
+            os.environ.pop("TLS_CA", None)
+            os.environ.pop("TLS_CONFIG", None)
+            with self.assertRaisesRegex(RuntimeError, "TLS_CERT and TLS_KEY must be set together"):
+                _build_ssl_context()
 
 
 if __name__ == "__main__":
