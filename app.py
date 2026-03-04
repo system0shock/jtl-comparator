@@ -180,12 +180,17 @@ def _load_tls_config() -> dict[str, str]:
 
 
 if __name__ == "__main__":
+    import ssl
+
     debug = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "5000"))
     ssl_ctx = _build_ssl_context()
     if ssl_ctx:
-        print(f"mTLS enabled - https://{host}:{port}")
+        if ssl_ctx.verify_mode == ssl.CERT_REQUIRED:
+            print(f"mTLS enabled - https://{host}:{port}")
+        else:
+            print(f"HTTPS mode - https://{host}:{port}")
     else:
         print(f"HTTP mode - http://{host}:{port}")
     app.run(debug=debug, host=host, port=port, ssl_context=ssl_ctx)

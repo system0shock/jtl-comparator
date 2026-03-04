@@ -65,6 +65,8 @@ tls_key = /etc/jtl-comparator/certs/server.key
 tls_ca = /etc/jtl-comparator/certs/ca.crt
 ```
 
+Примечание: относительные пути в `TLS_CONFIG` считаются относительно директории самого config-файла.
+
 Быстрый старт для тестов:
 
 ```bash
