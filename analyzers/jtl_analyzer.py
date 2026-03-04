@@ -100,8 +100,10 @@ def parse_jtl(filepath: str | Path, mode: str = "auto") -> pd.DataFrame:
     if df.empty:
         raise ValueError(f"Файл «{path.name}» пустой.")
 
+    has_url_column = "URL" in df.columns
+
     # Определяем строки Transaction Controller (URL пустой/null/None)
-    if "URL" in df.columns:
+    if has_url_column:
         is_tc = df["URL"].isna() | (df["URL"].astype(str).str.strip().isin(["", "null", "None"]))
         has_tc = is_tc.any()
     else:
@@ -117,6 +119,11 @@ def parse_jtl(filepath: str | Path, mode: str = "auto") -> pd.DataFrame:
             )
         df = df[is_tc].copy()
     elif mode == "samplers":
+        if not has_url_column:
+            raise ValueError(
+                f"Файл «{path.name}»: режим «HTTP-сэмплеры» требует колонку URL, "
+                f"но она отсутствует."
+            )
         # Берём только строки с реальным URL (HTTP-сэмплеры)
         df = df[~is_tc].copy() if has_tc else df.copy()
     else:  # auto

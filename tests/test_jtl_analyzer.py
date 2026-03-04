@@ -146,6 +146,15 @@ class ParseJtlModeTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "не осталось строк"):
             parse_jtl(self._write_jtl(csv), mode="samplers")
 
+    def test_parse_jtl_samplers_requires_url_column(self):
+        csv = (
+            "timeStamp,elapsed,label,success\n"
+            "1,100,A,true\n"
+            "2,110,B,true\n"
+        )
+        with self.assertRaisesRegex(ValueError, "требует колонку URL"):
+            parse_jtl(self._write_jtl(csv), mode="samplers")
+
 
 if __name__ == "__main__":
     unittest.main()

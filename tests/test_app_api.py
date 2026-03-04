@@ -193,6 +193,19 @@ class CompareApiTests(unittest.TestCase):
         self.assertIn("error", payload)
         self.assertIn("не осталось строк", payload["error"])
 
+    def test_compare_mode_samplers_requires_url_column(self):
+        csv_without_url = (
+            "timeStamp,elapsed,label,success\n"
+            "1,100,HTTP,true\n"
+            "2,110,HTTP2,true\n"
+        )
+
+        resp = self._post_compare(csv_without_url, csv_without_url, extra_form={"jtl_mode": "samplers"})
+        self.assertEqual(resp.status_code, 422)
+        payload = resp.get_json()
+        self.assertIn("error", payload)
+        self.assertIn("требует колонку URL", payload["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
