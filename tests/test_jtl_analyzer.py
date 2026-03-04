@@ -1,8 +1,10 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pandas as pd
 
-from analyzers.jtl_analyzer import compare, _delta_pct, _normalize_delta_rules
+from analyzers.jtl_analyzer import compare, parse_jtl, _delta_pct, _normalize_delta_rules
 
 
 def _make_rows(label: str, samples: int, elapsed: float, success: bool = True, start_ts: int = 0):
@@ -72,6 +74,86 @@ class JtlAnalyzerSummaryTests(unittest.TestCase):
     def test_normalize_rules_rejects_critical_less_than_warning(self):
         with self.assertRaises(ValueError):
             _normalize_delta_rules({"time_warning_pct": 15, "time_critical_pct": 10})
+
+
+class ParseJtlModeTests(unittest.TestCase):
+    @staticmethod
+    def _write_jtl(content: str) -> str:
+        td = TemporaryDirectory()
+        path = Path(td.name) / "sample.jtl"
+        path.write_text(content, encoding="utf-8")
+        # Keep directory alive until tests end
+        if not hasattr(ParseJtlModeTests, "_tmp_dirs"):
+            ParseJtlModeTests._tmp_dirs = []
+        ParseJtlModeTests._tmp_dirs.append(td)
+        return str(path)
+
+    @classmethod
+    def tearDownClass(cls):
+        for td in getattr(cls, "_tmp_dirs", []):
+            td.cleanup()
+
+    def test_parse_jtl_auto_prefers_tc_rows_when_present(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,TC,true,\n"
+            "2,120,HTTP,true,https://example/a\n"
+        )
+        df = parse_jtl(self._write_jtl(csv), mode="auto")
+        self.assertListEqual(df["label"].tolist(), ["TC"])
+
+    def test_parse_jtl_samplers_returns_only_non_tc_rows(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,TC,true,\n"
+            "2,120,HTTP,true,https://example/a\n"
+        )
+        df = parse_jtl(self._write_jtl(csv), mode="samplers")
+        self.assertListEqual(df["label"].tolist(), ["HTTP"])
+
+    def test_parse_jtl_tc_mode_raises_when_tc_not_found(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,HTTP,true,https://example/a\n"
+        )
+        with self.assertRaisesRegex(ValueError, "TC не найдены"):
+            parse_jtl(self._write_jtl(csv), mode="tc")
+
+    def test_parse_jtl_rejects_unknown_mode(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,A,true,\n"
+        )
+        with self.assertRaisesRegex(ValueError, "Неизвестный режим"):
+            parse_jtl(self._write_jtl(csv), mode="unknown")
+
+    def test_parse_jtl_skips_malformed_csv_lines(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,A,true,\n"
+            "BROKEN,LINE,WITH,TOO,MANY,COLUMNS,1\n"
+            "2,110,B,true,\n"
+        )
+        df = parse_jtl(self._write_jtl(csv), mode="auto")
+        self.assertListEqual(df["label"].tolist(), ["A", "B"])
+
+    def test_parse_jtl_raises_when_no_rows_after_filtering(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,TC,true,\n"
+            "2,110,TC2,false,\n"
+        )
+        with self.assertRaisesRegex(ValueError, "не осталось строк"):
+            parse_jtl(self._write_jtl(csv), mode="samplers")
+
+    def test_parse_jtl_samplers_requires_url_column(self):
+        csv = (
+            "timeStamp,elapsed,label,success\n"
+            "1,100,A,true\n"
+            "2,110,B,true\n"
+        )
+        with self.assertRaisesRegex(ValueError, "требует колонку URL"):
+            parse_jtl(self._write_jtl(csv), mode="samplers")
 
 
 if __name__ == "__main__":

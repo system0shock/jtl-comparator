@@ -189,6 +189,35 @@
       flex-wrap: wrap;
     }
 
+    .mode-panel {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      margin-bottom: 16px;
+    }
+    .mode-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .mode-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 5px 10px;
+      cursor: pointer;
+      flex: 1;
+      max-width: 480px;
+    }
+    .mode-select:focus { outline: 2px solid var(--accent); }
+
     .rules-panel {
       background: var(--bg2);
       border: 1px solid var(--border);
@@ -521,6 +550,19 @@
     </div>
   </div>
 
+  <!-- Режим анализа сэмплеров -->
+  <div class="mode-panel">
+    <label for="jtlMode" class="mode-label">
+      Режим анализа
+      <span class="help-icon" data-tooltip="Авто: берёт Transaction Controllers (строки с пустым URL). Если TC нет — берёт HTTP-сэмплеры.&#10;HTTP-сэмплеры: всегда брать вложенные запросы — удобно при вложенных циклах внутри TC.&#10;Только TC: жёсткий режим; ошибка, если TC не найдены.">?</span>
+    </label>
+    <select id="jtlMode" class="mode-select">
+      <option value="auto">Авто — TC если есть, иначе HTTP-сэмплеры</option>
+      <option value="samplers">HTTP-сэмплеры — игнорировать Transaction Controllers</option>
+      <option value="tc">Только Transaction Controllers</option>
+    </select>
+  </div>
+
   <details class="help-panel">
     <summary>Как пользоваться инструментом</summary>
     <div class="help-panel-body">
@@ -778,6 +820,7 @@
     fd.append('file2', file2);
     fd.append('name1', document.getElementById('name1').value || 'Run 1');
     fd.append('name2', document.getElementById('name2').value || 'Run 2');
+    fd.append('jtl_mode', document.getElementById('jtlMode').value);
     const deltaRules = collectDeltaRules();
     Object.entries(deltaRules).forEach(([key, value]) => fd.append(key, value));
 

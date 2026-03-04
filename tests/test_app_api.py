@@ -105,6 +105,107 @@ class CompareApiTests(unittest.TestCase):
         self.assertEqual(data["rows"][0]["d_avg"], 12.0)
         self.assertEqual(data["rows"][0]["d_avg_class"], "critical")
 
+    def test_compare_mode_auto_prefers_tc_when_present(self):
+        csv1 = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 100, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 300, "label": "HTTP", "success": True, "URL": "https://a"},
+            ]
+        )
+        csv2 = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 110, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 310, "label": "HTTP", "success": True, "URL": "https://a"},
+            ]
+        )
+
+        resp = self._post_compare(csv1, csv2, extra_form={"jtl_mode": "auto"})
+        self.assertEqual(resp.status_code, 200)
+        labels = [r["label"] for r in resp.get_json()["rows"]]
+        self.assertIn("TC", labels)
+        self.assertNotIn("HTTP", labels)
+
+    def test_compare_mode_samplers_uses_http_rows(self):
+        csv1 = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 100, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 300, "label": "HTTP", "success": True, "URL": "https://a"},
+            ]
+        )
+        csv2 = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 110, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 310, "label": "HTTP", "success": True, "URL": "https://a"},
+            ]
+        )
+
+        resp = self._post_compare(csv1, csv2, extra_form={"jtl_mode": "samplers"})
+        self.assertEqual(resp.status_code, 200)
+        labels = [r["label"] for r in resp.get_json()["rows"]]
+        self.assertIn("HTTP", labels)
+        self.assertNotIn("TC", labels)
+
+    def test_compare_mode_tc_returns_422_when_tc_not_found(self):
+        csv = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 100, "label": "HTTP", "success": True, "URL": "https://a"},
+                {"timeStamp": 2, "elapsed": 110, "label": "HTTP2", "success": False, "URL": "https://b"},
+            ]
+        )
+
+        resp = self._post_compare(csv, csv, extra_form={"jtl_mode": "tc"})
+        self.assertEqual(resp.status_code, 422)
+        payload = resp.get_json()
+        self.assertIn("error", payload)
+        self.assertIn("TC не найдены", payload["error"])
+
+    def test_compare_invalid_mode_falls_back_to_auto(self):
+        csv1 = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 100, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 300, "label": "HTTP", "success": True, "URL": "https://a"},
+            ]
+        )
+        csv2 = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 110, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 310, "label": "HTTP", "success": True, "URL": "https://a"},
+            ]
+        )
+
+        resp = self._post_compare(csv1, csv2, extra_form={"jtl_mode": "invalid-mode"})
+        self.assertEqual(resp.status_code, 200)
+        labels = [r["label"] for r in resp.get_json()["rows"]]
+        self.assertIn("TC", labels)
+        self.assertNotIn("HTTP", labels)
+
+    def test_compare_mode_samplers_returns_422_when_all_rows_are_tc(self):
+        csv = _jtl_csv(
+            [
+                {"timeStamp": 1, "elapsed": 100, "label": "TC", "success": True, "URL": ""},
+                {"timeStamp": 2, "elapsed": 110, "label": "TC2", "success": True, "URL": ""},
+            ]
+        )
+
+        resp = self._post_compare(csv, csv, extra_form={"jtl_mode": "samplers"})
+        self.assertEqual(resp.status_code, 422)
+        payload = resp.get_json()
+        self.assertIn("error", payload)
+        self.assertIn("не осталось строк", payload["error"])
+
+    def test_compare_mode_samplers_requires_url_column(self):
+        csv_without_url = (
+            "timeStamp,elapsed,label,success\n"
+            "1,100,HTTP,true\n"
+            "2,110,HTTP2,true\n"
+        )
+
+        resp = self._post_compare(csv_without_url, csv_without_url, extra_form={"jtl_mode": "samplers"})
+        self.assertEqual(resp.status_code, 422)
+        payload = resp.get_json()
+        self.assertIn("error", payload)
+        self.assertIn("требует колонку URL", payload["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

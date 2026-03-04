@@ -7,3 +7,9 @@ tmp_compare.json
 
 # Local assistant notes
 CLAUDE.md
+
+# Local IDE assistant state
+.claude/
+
+# Local secrets
+gigachat.key
