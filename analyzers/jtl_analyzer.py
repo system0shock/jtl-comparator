@@ -62,22 +62,30 @@ def _normalize_delta_rules(rules: dict | None) -> dict[str, float]:
     return normalized
 
 
-def parse_jtl(filepath: str | Path) -> pd.DataFrame:
+def parse_jtl(filepath: str | Path, mode: str = "auto") -> pd.DataFrame:
     """
-    Читает JTL-файл и возвращает DataFrame с родительскими транзакциями.
+    Читает JTL-файл и возвращает DataFrame для анализа.
 
-    Логика фильтрации:
-    - Если в файле есть строки с пустым URL (Transaction Controller) — берём только их.
-    - Если все строки имеют URL (только HTTP-сэмплеры) — берём все строки.
+    Режимы фильтрации (mode):
+    - 'auto'     : TC-строки если есть (пустой URL), иначе все HTTP-сэмплеры.
+    - 'tc'       : только Transaction Controller-строки; ошибка если их нет.
+    - 'samplers' : только HTTP-сэмплеры (строки с непустым URL).
+
+    Битые строки CSV (несовпадение числа колонок) пропускаются автоматически.
 
     :param filepath: путь к .jtl файлу
+    :param mode: режим фильтрации — 'auto' | 'tc' | 'samplers'
     :return: очищенный DataFrame
     :raises ValueError: при проблемах с форматом файла
     """
+    if mode not in ("auto", "tc", "samplers"):
+        raise ValueError(f"Неизвестный режим parse_jtl: '{mode}'. Допустимые: auto, tc, samplers.")
+
     path = Path(filepath)
 
     try:
-        df = pd.read_csv(path, low_memory=False)
+        # on_bad_lines='skip' — пропускаем строки с неверным числом полей
+        df = pd.read_csv(path, low_memory=False, on_bad_lines="skip")
     except Exception as exc:
         raise ValueError(f"Не удалось прочитать файл «{path.name}»: {exc}") from exc
 
@@ -92,16 +100,29 @@ def parse_jtl(filepath: str | Path) -> pd.DataFrame:
     if df.empty:
         raise ValueError(f"Файл «{path.name}» пустой.")
 
-    # Определяем тип строк: Transaction Controller — URL пустой/null/None
+    # Определяем строки Transaction Controller (URL пустой/null/None)
     if "URL" in df.columns:
-        is_parent = df["URL"].isna() | (df["URL"].astype(str).str.strip().isin(["", "null", "None"]))
-        has_parents = is_parent.any()
+        is_tc = df["URL"].isna() | (df["URL"].astype(str).str.strip().isin(["", "null", "None"]))
+        has_tc = is_tc.any()
     else:
-        has_parents = False
+        is_tc = pd.Series(False, index=df.index)
+        has_tc = False
 
-    if has_parents:
-        df = df[is_parent].copy()
-    # Иначе — берём все строки как есть
+    if mode == "tc":
+        if not has_tc:
+            raise ValueError(
+                f"Файл «{path.name}»: выбран режим «только Transaction Controllers», "
+                f"но строки TC не найдены (нет строк с пустым URL). "
+                f"Попробуйте режим «Авто» или «HTTP-сэмплеры»."
+            )
+        df = df[is_tc].copy()
+    elif mode == "samplers":
+        # Берём только строки с реальным URL (HTTP-сэмплеры)
+        df = df[~is_tc].copy() if has_tc else df.copy()
+    else:  # auto
+        if has_tc:
+            df = df[is_tc].copy()
+        # Иначе — берём все строки как есть
 
     # Приводим типы
     df["elapsed"] = pd.to_numeric(df["elapsed"], errors="coerce")
@@ -112,6 +133,12 @@ def parse_jtl(filepath: str | Path) -> pd.DataFrame:
 
     # Убираем строки с невалидными значениями времени
     df = df.dropna(subset=["elapsed", "timeStamp"])
+
+    if df.empty:
+        raise ValueError(
+            f"Файл «{path.name}»: после фильтрации (режим «{mode}») не осталось строк. "
+            f"Проверьте формат файла или смените режим анализа."
+        )
 
     return df
 

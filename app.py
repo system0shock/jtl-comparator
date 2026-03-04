@@ -47,6 +47,9 @@ def compare_runs():
 
     name1 = request.form.get("name1", "Run 1").strip() or "Run 1"
     name2 = request.form.get("name2", "Run 2").strip() or "Run 2"
+    jtl_mode = request.form.get("jtl_mode", "auto")
+    if jtl_mode not in ("auto", "tc", "samplers"):
+        jtl_mode = "auto"
     delta_rules = {
         "time_warning_pct": request.form.get("time_warning_pct"),
         "time_critical_pct": request.form.get("time_critical_pct"),
@@ -74,9 +77,9 @@ def compare_runs():
             file2.save(f2)
             tmp2 = f2.name
 
-        # Парсим оба файла
-        df1 = parse_jtl(tmp1)
-        df2 = parse_jtl(tmp2)
+        # Парсим оба файла с выбранным режимом фильтрации
+        df1 = parse_jtl(tmp1, mode=jtl_mode)
+        df2 = parse_jtl(tmp2, mode=jtl_mode)
 
         # Сравниваем и возвращаем результат
         result = compare(df1, df2, name1, name2, rules=delta_rules)
