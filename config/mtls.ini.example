@@ -1,0 +1,5 @@
+[mtls]
+# Paths can be absolute or relative to this file location.
+tls_cert = certs/server.crt
+tls_key = certs/server.key
+tls_ca = certs/ca.crt

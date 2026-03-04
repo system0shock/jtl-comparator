@@ -13,3 +13,6 @@ CLAUDE.md
 
 # Local secrets
 gigachat.key
+
+# Local test certificates
+certs/
