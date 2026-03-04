@@ -111,12 +111,18 @@ def _build_ssl_context() -> "ssl.SSLContext | None":
     """
     import ssl
 
+    explicit_tls_config = bool(os.getenv("TLS_CONFIG", "").strip())
     tls_cfg = _load_tls_config()
     cert = os.getenv("TLS_CERT") or tls_cfg.get("TLS_CERT")
     key = os.getenv("TLS_KEY") or tls_cfg.get("TLS_KEY")
     ca = os.getenv("TLS_CA") or tls_cfg.get("TLS_CA")
 
     if not cert or not key:
+        if explicit_tls_config:
+            raise RuntimeError(
+                "TLS_CONFIG is set, but TLS_CERT/TLS_KEY are not resolved. "
+                "Fix the config file or provide TLS_CERT and TLS_KEY."
+            )
         return None
 
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -137,17 +143,23 @@ def _load_tls_config() -> dict[str, str]:
     Section: [mtls]
     Keys: tls_cert, tls_key, tls_ca
     """
-    cfg_path = os.getenv("TLS_CONFIG", "config/mtls.ini").strip()
+    cfg_env = os.getenv("TLS_CONFIG")
+    cfg_path = (cfg_env if cfg_env is not None else "config/mtls.ini").strip()
     if not cfg_path:
         return {}
+    explicit_tls_config = cfg_env is not None and bool(cfg_env.strip())
 
     cfg_file = Path(cfg_path)
     if not cfg_file.exists():
+        if explicit_tls_config:
+            raise RuntimeError(f"TLS_CONFIG file not found: {cfg_file}")
         return {}
 
     parser = ConfigParser()
     parser.read(cfg_file, encoding="utf-8")
     if not parser.has_section("mtls"):
+        if explicit_tls_config:
+            raise RuntimeError(f"TLS_CONFIG is invalid: missing [mtls] section in {cfg_file}")
         return {}
 
     mapping = {
