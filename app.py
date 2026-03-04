@@ -6,6 +6,7 @@ JTL Comparator — Flask-приложение для сравнения резу
 
 import os
 import tempfile
+from configparser import ConfigParser
 from pathlib import Path
 
 from flask import Flask, render_template, request, jsonify
@@ -101,8 +102,105 @@ def compare_runs():
                 os.remove(tmp)
 
 
+def _build_ssl_context() -> "ssl.SSLContext | None":
+    """
+    Build SSL context from env and optional config file.
+    TLS_CERT + TLS_KEY enable HTTPS.
+    TLS_CA enables client certificate verification (mTLS).
+    Partial TLS_CERT/TLS_KEY env config is treated as an error.
+    If both are missing, return None and run over HTTP.
+    """
+    import ssl
+
+    env_cert = (os.getenv("TLS_CERT") or "").strip()
+    env_key = (os.getenv("TLS_KEY") or "").strip()
+    env_ca = (os.getenv("TLS_CA") or "").strip()
+
+    if bool(env_cert) ^ bool(env_key):
+        raise RuntimeError(
+            "Partial TLS env configuration: TLS_CERT and TLS_KEY must be set together."
+        )
+
+    explicit_tls_config = bool(os.getenv("TLS_CONFIG", "").strip())
+    tls_cfg = _load_tls_config()
+    cert = env_cert or tls_cfg.get("TLS_CERT")
+    key = env_key or tls_cfg.get("TLS_KEY")
+    ca = env_ca or tls_cfg.get("TLS_CA")
+
+    if not cert or not key:
+        if explicit_tls_config:
+            raise RuntimeError(
+                "TLS_CONFIG is set, but TLS_CERT/TLS_KEY are not resolved. "
+                "Fix the config file or provide TLS_CERT and TLS_KEY."
+            )
+        return None
+
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+
+    if ca:
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        ctx.load_verify_locations(cafile=ca)
+
+    return ctx
+
+
+def _load_tls_config() -> dict[str, str]:
+    """
+    Read TLS paths from INI config file.
+    Default file: config/mtls.ini
+    Section: [mtls]
+    Keys: tls_cert, tls_key, tls_ca
+    """
+    cfg_env = os.getenv("TLS_CONFIG")
+    cfg_path = (cfg_env if cfg_env is not None else "config/mtls.ini").strip()
+    if not cfg_path:
+        return {}
+    explicit_tls_config = cfg_env is not None and bool(cfg_env.strip())
+
+    cfg_file = Path(cfg_path)
+    if not cfg_file.exists():
+        if explicit_tls_config:
+            raise RuntimeError(f"TLS_CONFIG file not found: {cfg_file}")
+        return {}
+
+    parser = ConfigParser()
+    parser.read(cfg_file, encoding="utf-8")
+    if not parser.has_section("mtls"):
+        if explicit_tls_config:
+            raise RuntimeError(f"TLS_CONFIG is invalid: missing [mtls] section in {cfg_file}")
+        return {}
+
+    mapping = {
+        "TLS_CERT": "tls_cert",
+        "TLS_KEY": "tls_key",
+        "TLS_CA": "tls_ca",
+    }
+    loaded: dict[str, str] = {}
+    for env_key, cfg_key in mapping.items():
+        raw = parser.get("mtls", cfg_key, fallback="").strip()
+        if not raw:
+            continue
+        value_path = Path(raw)
+        if not value_path.is_absolute():
+            value_path = (cfg_file.parent / value_path).resolve()
+        loaded[env_key] = str(value_path)
+    return loaded
+
+
 if __name__ == "__main__":
+    import ssl
+
     debug = os.getenv("FLASK_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "5000"))
-    app.run(debug=debug, host=host, port=port)
+    ssl_ctx = _build_ssl_context()
+    if ssl_ctx:
+        if ssl_ctx.verify_mode == ssl.CERT_REQUIRED:
+            print(f"mTLS enabled - https://{host}:{port}")
+        else:
+            print(f"HTTPS mode - https://{host}:{port}")
+    else:
+        print(f"HTTP mode - http://{host}:{port}")
+    app.run(debug=debug, host=host, port=port, ssl_context=ssl_ctx)

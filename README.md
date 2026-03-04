@@ -36,6 +36,47 @@ python app.py
 FLASK_DEBUG=1 HOST=127.0.0.1 PORT=5000 python app.py
 ```
 
+## mTLS
+
+Поддерживаются три режима запуска:
+
+| Режим | Команда | Когда использовать |
+|---|---|---|
+| HTTP | `python app.py` | Локальная разработка |
+| HTTPS only | `TLS_CERT=... TLS_KEY=... python app.py` | TLS без проверки клиентского сертификата |
+| mTLS (config) | `TLS_CONFIG=/etc/jtl-comparator/mtls.ini python app.py` | Продакшн в банковской сети |
+| mTLS (env) | `TLS_CERT=... TLS_KEY=... TLS_CA=... python app.py` | Альтернатива без config-файла |
+
+Переменные окружения:
+
+- `TLS_CONFIG` — путь к INI-конфигу (по умолчанию `config/mtls.ini`)
+- `TLS_CERT` — путь к серверному сертификату (PEM)
+- `TLS_KEY` — путь к приватному ключу сервера (PEM)
+- `TLS_CA` — путь к CA для проверки клиентских сертификатов (PEM)
+- `HOST` — адрес прослушивания (по умолчанию `127.0.0.1`)
+- `PORT` — порт (по умолчанию `5000`)
+
+Формат `TLS_CONFIG`:
+
+```ini
+[mtls]
+tls_cert = /etc/jtl-comparator/certs/server.crt
+tls_key = /etc/jtl-comparator/certs/server.key
+tls_ca = /etc/jtl-comparator/certs/ca.crt
+```
+
+Примечание: относительные пути в `TLS_CONFIG` считаются относительно директории самого config-файла.
+
+Быстрый старт для тестов:
+
+```bash
+./scripts/gen-certs.sh localhost
+cp config/mtls.ini.example config/mtls.ini
+HOST=0.0.0.0 PORT=8443 python app.py
+```
+
+Подробная инструкция: [docs/mtls-setup.md](./docs/mtls-setup.md)
+
 ## Релизы
 
 В репозитории настроен автоматический релиз по Git-тегу формата `v*`.

@@ -4,6 +4,19 @@
 
 Формат основан на Keep a Changelog.
 
+## [Unreleased]
+
+### Added
+- mTLS-поддержка: запуск с `TLS_CERT` / `TLS_KEY` / `TLS_CA` env-переменными без новых зависимостей.
+- Скрипты `scripts/gen-certs.sh` и `scripts/gen-client-cert.sh` для генерации тестового PKI.
+- Стартовый скрипт `scripts/start-mtls.sh` для деплоя на Linux.
+- Пример конфига `config/mtls.ini.example`.
+- Документация `docs/mtls-setup.md` с инструкцией по деплою в банке.
+- Параметр `jtl_mode` (`auto` / `tc` / `samplers`) для явного управления режимом парсинга JTL.
+
+### Fixed
+- Режим `samplers` теперь отклоняется, если в файле отсутствует колонка `URL`.
+
 ## [0.3.0] - 2026-03-03
 
 ### Added
