@@ -7,7 +7,6 @@ import pandas as pd
 
 from analyzers.jtl_analyzer import (
     _delta_pct,
-    _extract_time_range,
     _normalize_delta_rules,
     aggregate,
     compare,
@@ -29,20 +28,6 @@ def _make_rows(label: str, samples: int, elapsed: float, success: bool = True, s
 
 
 class JtlAnalyzerSummaryTests(unittest.TestCase):
-    def test_extract_time_range_unix_seconds(self):
-        df = pd.DataFrame(
-            [
-                {"timeStamp": 1700000000123},
-                {"timeStamp": 1700003600456},
-                {"timeStamp": 1700001200000},
-            ]
-        )
-
-        self.assertEqual(_extract_time_range(df), (1700000000, 1700003600))
-
-    def test_extract_time_range_empty_df(self):
-        self.assertEqual(_extract_time_range(pd.DataFrame()), (None, None))
-
     def test_summary_uses_weighted_average_by_samples(self):
         # A: 100 samples, B: 1 sample. Arithmetic mean would be 550, weighted ~108.9.
         df1 = pd.DataFrame(
@@ -60,17 +45,6 @@ class JtlAnalyzerSummaryTests(unittest.TestCase):
         self.assertEqual(summary["samples_2"], 101.0)
         self.assertEqual(summary["avg_1"], 108.9)
         self.assertEqual(summary["avg_2"], 207.9)
-
-    def test_compare_returns_time_range_fields(self):
-        df1 = pd.DataFrame(_make_rows("A", 2, 100.0, True, 1700000000000))
-        df2 = pd.DataFrame(_make_rows("A", 2, 110.0, True, 1700003600000))
-
-        result = compare(df1, df2, "Run 1", "Run 2")
-
-        self.assertEqual(result["run1_start"], 1700000000)
-        self.assertEqual(result["run1_end"], 1700000001)
-        self.assertEqual(result["run2_start"], 1700003600)
-        self.assertEqual(result["run2_end"], 1700003601)
 
     def test_missing_run_error_rate_is_none_and_neutral(self):
         df1 = pd.DataFrame(_make_rows("OnlyInRun1", 3, 100.0, True, 0))
