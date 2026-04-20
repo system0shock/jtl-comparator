@@ -1,10 +1,19 @@
 import unittest
+import os
+import tempfile
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import pandas as pd
 
-from analyzers.jtl_analyzer import compare, parse_jtl, _delta_pct, _normalize_delta_rules
+from analyzers.jtl_analyzer import (
+    _delta_pct,
+    _extract_time_range,
+    _normalize_delta_rules,
+    aggregate,
+    compare,
+    parse_jtl,
+)
+from analyzers.jtl_streaming import aggregate_streaming_jtl, stream_jtl_rows
 
 
 def _make_rows(label: str, samples: int, elapsed: float, success: bool = True, start_ts: int = 0):
@@ -20,6 +29,20 @@ def _make_rows(label: str, samples: int, elapsed: float, success: bool = True, s
 
 
 class JtlAnalyzerSummaryTests(unittest.TestCase):
+    def test_extract_time_range_unix_seconds(self):
+        df = pd.DataFrame(
+            [
+                {"timeStamp": 1700000000123},
+                {"timeStamp": 1700003600456},
+                {"timeStamp": 1700001200000},
+            ]
+        )
+
+        self.assertEqual(_extract_time_range(df), (1700000000, 1700003600))
+
+    def test_extract_time_range_empty_df(self):
+        self.assertEqual(_extract_time_range(pd.DataFrame()), (None, None))
+
     def test_summary_uses_weighted_average_by_samples(self):
         # A: 100 samples, B: 1 sample. Arithmetic mean would be 550, weighted ~108.9.
         df1 = pd.DataFrame(
@@ -37,6 +60,17 @@ class JtlAnalyzerSummaryTests(unittest.TestCase):
         self.assertEqual(summary["samples_2"], 101.0)
         self.assertEqual(summary["avg_1"], 108.9)
         self.assertEqual(summary["avg_2"], 207.9)
+
+    def test_compare_returns_time_range_fields(self):
+        df1 = pd.DataFrame(_make_rows("A", 2, 100.0, True, 1700000000000))
+        df2 = pd.DataFrame(_make_rows("A", 2, 110.0, True, 1700003600000))
+
+        result = compare(df1, df2, "Run 1", "Run 2")
+
+        self.assertEqual(result["run1_start"], 1700000000)
+        self.assertEqual(result["run1_end"], 1700000001)
+        self.assertEqual(result["run2_start"], 1700003600)
+        self.assertEqual(result["run2_end"], 1700003601)
 
     def test_missing_run_error_rate_is_none_and_neutral(self):
         df1 = pd.DataFrame(_make_rows("OnlyInRun1", 3, 100.0, True, 0))
@@ -79,19 +113,24 @@ class JtlAnalyzerSummaryTests(unittest.TestCase):
 class ParseJtlModeTests(unittest.TestCase):
     @staticmethod
     def _write_jtl(content: str) -> str:
-        td = TemporaryDirectory()
-        path = Path(td.name) / "sample.jtl"
+        tmp_root = Path.cwd() / ".tmp-test" / "jtl-analyzer"
+        tmp_root.mkdir(parents=True, exist_ok=True)
+        fd, raw_path = tempfile.mkstemp(dir=tmp_root, suffix=".jtl")
+        os.close(fd)
+        path = Path(raw_path)
         path.write_text(content, encoding="utf-8")
-        # Keep directory alive until tests end
         if not hasattr(ParseJtlModeTests, "_tmp_dirs"):
             ParseJtlModeTests._tmp_dirs = []
-        ParseJtlModeTests._tmp_dirs.append(td)
+        ParseJtlModeTests._tmp_dirs.append(path)
         return str(path)
 
     @classmethod
     def tearDownClass(cls):
         for td in getattr(cls, "_tmp_dirs", []):
-            td.cleanup()
+            try:
+                td.unlink()
+            except FileNotFoundError:
+                pass
 
     def test_parse_jtl_auto_prefers_tc_rows_when_present(self):
         csv = (
@@ -145,6 +184,39 @@ class ParseJtlModeTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "не осталось строк"):
             parse_jtl(self._write_jtl(csv), mode="samplers")
+
+    def test_streaming_rows_match_parse_jtl_auto_mode(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,TC,true,\n"
+            "2,120,HTTP,true,https://example/a\n"
+            "BROKEN,LINE,WITH,TOO,MANY,COLUMNS,1\n"
+            "3,130,TC,false,\n"
+        )
+
+        path = self._write_jtl(csv)
+
+        expected = parse_jtl(path, mode="auto").reset_index(drop=True)
+        actual = pd.DataFrame(list(stream_jtl_rows(path, mode="auto"))).reindex(columns=expected.columns)
+
+        pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+
+    def test_exact_aggregate_matches_current_compare_pipeline(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1000,100,A,true,\n"
+            "2000,140,A,false,\n"
+            "3000,200,B,true,\n"
+            "4000,260,B,true,\n"
+            "5000,320,B,false,\n"
+        )
+
+        path = self._write_jtl(csv)
+
+        expected = aggregate(parse_jtl(path, mode="auto"))
+        actual = aggregate_streaming_jtl(path, mode="auto")
+
+        pd.testing.assert_frame_equal(actual, expected)
 
     def test_parse_jtl_samplers_requires_url_column(self):
         csv = (
