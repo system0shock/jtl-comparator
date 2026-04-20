@@ -88,7 +88,7 @@ class UiSortingE2ETest(unittest.TestCase):
             page.set_input_files("#file1", str(self.run1))
             page.set_input_files("#file2", str(self.run2))
             page.click("#btnCompare")
-            page.wait_for_selector("#mainTable tbody tr")
+            page.wait_for_selector("#mainTable tbody tr", timeout=60_000)
 
             # Первый клик: asc -> минимальная дельта (A-trx, -10%)
             page.click('th[data-sort-key="d_avg"]')

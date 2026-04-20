@@ -11,7 +11,8 @@ import tempfile
 import uuid
 from pathlib import Path
 from itertools import zip_longest
-from typing import Iterator
+import threading
+from typing import Callable, Iterator
 
 import numpy as np
 import pandas as pd
@@ -63,7 +64,19 @@ def _normalize_row(row: dict[str, str], path: Path) -> dict[str, object] | None:
     return normalized
 
 
-def _stream_all_rows(path: Path) -> Iterator[dict[str, object]]:
+_PROGRESS_ROW_INTERVAL = 5_000
+
+
+class CancelledError(Exception):
+    """Raised when a streaming job is cancelled via a threading.Event."""
+
+
+def _stream_all_rows(
+    path: Path,
+    _pos_reporter: "Callable[[int], None] | None" = None,
+    _cancel_event: "threading.Event | None" = None,
+) -> Iterator[dict[str, object]]:
+    row_count = 0
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.reader(handle)
         try:
@@ -89,6 +102,12 @@ def _stream_all_rows(path: Path) -> Iterator[dict[str, object]]:
             normalized = _normalize_row(row, path)
             if normalized is not None:
                 yield normalized
+                row_count += 1
+                if row_count % _PROGRESS_ROW_INTERVAL == 0:
+                    if _cancel_event and _cancel_event.is_set():
+                        raise CancelledError("Job cancelled")
+                    if _pos_reporter:
+                        _pos_reporter(handle.tell())
 
 
 def _scan_jtl_metadata(path: Path) -> tuple[bool, bool, bool, bool]:
@@ -130,7 +149,12 @@ def _scan_jtl_metadata(path: Path) -> tuple[bool, bool, bool, bool]:
         return True, False, saw_any_row, True
 
 
-def stream_jtl_rows(filepath: str | Path, mode: str = "auto") -> Iterator[dict[str, object]]:
+def stream_jtl_rows(
+    filepath: str | Path,
+    mode: str = "auto",
+    _pos_reporter: "Callable[[int], None] | None" = None,
+    _cancel_event: "threading.Event | None" = None,
+) -> Iterator[dict[str, object]]:
     path = Path(filepath)
     if mode not in ("auto", "tc", "samplers"):
         raise ValueError(f"Неизвестный режим parse_jtl: '{mode}'. Допустимые: auto, tc, samplers.")
@@ -154,22 +178,22 @@ def stream_jtl_rows(filepath: str | Path, mode: str = "auto") -> Iterator[dict[s
     def _iterator() -> Iterator[dict[str, object]]:
         yielded = 0
         if mode == "tc":
-            for row in _stream_all_rows(path):
+            for row in _stream_all_rows(path, _pos_reporter, _cancel_event):
                 if _is_tc_url(row.get("URL") if isinstance(row.get("URL"), str) else None):
                     yielded += 1
                     yield row
         elif mode == "samplers":
-            for row in _stream_all_rows(path):
+            for row in _stream_all_rows(path, _pos_reporter, _cancel_event):
                 if not _is_tc_url(row.get("URL") if isinstance(row.get("URL"), str) else None):
                     yielded += 1
                     yield row
         elif has_url_column and has_tc_rows:
-            for row in _stream_all_rows(path):
+            for row in _stream_all_rows(path, _pos_reporter, _cancel_event):
                 if _is_tc_url(row.get("URL") if isinstance(row.get("URL"), str) else None):
                     yielded += 1
                     yield row
         else:
-            for row in _stream_all_rows(path):
+            for row in _stream_all_rows(path, _pos_reporter, _cancel_event):
                 yielded += 1
                 yield row
 
@@ -240,8 +264,19 @@ def _create_spill_dir(base_dir: Path) -> Path:
     raise PermissionError("Unable to create a writable spill directory for JTL streaming.")
 
 
-def aggregate_streaming_jtl(filepath: str | Path, mode: str = "auto") -> pd.DataFrame:
+def aggregate_streaming_jtl(
+    filepath: str | Path,
+    mode: str = "auto",
+    on_progress: "Callable[[float], None] | None" = None,
+    cancel_event: "threading.Event | None" = None,
+) -> pd.DataFrame:
+    """Parse and aggregate a JTL file using streaming + disk spill.
+
+    on_progress(frac) is called periodically with a float in [0, 1].
+    cancel_event, when set, causes CancelledError to be raised mid-stream.
+    """
     path = Path(filepath)
+    total_bytes = path.stat().st_size if on_progress else 1
     tmp_root = _create_spill_dir(path.parent)
 
     label_files: dict[str, Path] = {}
@@ -262,8 +297,14 @@ def aggregate_streaming_jtl(filepath: str | Path, mode: str = "auto") -> pd.Data
         label_order.append(label)
         return file_path
 
+    def _pos_reporter(pos: int) -> None:
+        if on_progress and total_bytes > 0:
+            on_progress(min(pos / total_bytes, 1.0))
+
     try:
-        for row in stream_jtl_rows(path, mode=mode):
+        for row in stream_jtl_rows(path, mode=mode,
+                                    _pos_reporter=_pos_reporter if on_progress else None,
+                                    _cancel_event=cancel_event):
             label = str(row["label"])
             file_path = _label_path(label)
             with file_path.open("a", newline="", encoding="utf-8") as handle:

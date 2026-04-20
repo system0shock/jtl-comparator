@@ -323,6 +323,78 @@
       display: none;
     }
 
+    /* ===================== PROGRESS BAR ===================== */
+    .progress-section {
+      display: none;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 16px;
+    }
+    .progress-section.visible { display: block; }
+    .progress-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      gap: 12px;
+    }
+    .progress-stage {
+      font-size: 13px;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .progress-pct {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    .progress-track {
+      height: 6px;
+      background: var(--bg3);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    /* ===================== ZOOM CONTROLS ===================== */
+    .zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+    .zoom-controls span {
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 38px;
+      text-align: center;
+    }
+    .zoom-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 15px;
+      line-height: 1;
+      padding: 3px 8px;
+      transition: background .15s;
+    }
+    .zoom-btn:hover { background: var(--border); }
+
     /* ===================== TABLE AREA ===================== */
     .table-header {
       display: flex;
@@ -650,12 +722,26 @@
       <span class="spinner" id="spinner"></span>
       <span id="btnLabel">⚡ Сравнить</span>
     </button>
+    <button class="btn btn-secondary" id="btnCancel" onclick="cancelCompare()" style="display:none">
+      ✕ Отменить
+    </button>
     <button class="btn btn-secondary" id="btnMarkdown" onclick="copyMarkdown()" style="display:none">
       📋 Копировать Markdown
     </button>
     <button class="btn btn-secondary" id="btnCSV" onclick="downloadCSV()" style="display:none">
       ⬇ Скачать CSV
     </button>
+  </div>
+
+  <!-- Прогресс -->
+  <div class="progress-section" id="progressSection">
+    <div class="progress-header">
+      <span class="progress-stage" id="progressStage">Подготовка…</span>
+      <span class="progress-pct" id="progressPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
   </div>
 
   <!-- Ошибка -->
@@ -665,6 +751,11 @@
   <div id="resultSection" style="display:none">
     <div class="table-header">
       <h2 id="tableTitle">Результаты сравнения</h2>
+      <div class="zoom-controls">
+        <button class="zoom-btn" onclick="adjustZoom(-10)" title="Уменьшить">−</button>
+        <span id="zoomLabel">100%</span>
+        <button class="zoom-btn" onclick="adjustZoom(+10)" title="Увеличить">+</button>
+      </div>
     </div>
     <div class="table-wrapper" id="tableWrapper">
       <!-- Заполняется JS -->
@@ -685,6 +776,9 @@
   // ============================================================
   let lastResult = null;
   let sortState = { key: 'label', dir: 'asc' };
+  let _currentJobId = null;
+  let _pollTimer = null;
+  let _tableZoom = 100;
   const DELTA_RULE_KEYS = [
     'time_warning_pct',
     'time_critical_pct',
@@ -825,22 +919,87 @@
     Object.entries(deltaRules).forEach(([key, value]) => fd.append(key, value));
 
     try {
-      const resp = await fetch('/compare', { method: 'POST', body: fd });
+      const resp = await fetch('/compare/jobs', { method: 'POST', body: fd });
       const data = await resp.json();
 
       if (!resp.ok || data.error) {
         showError(data.error || 'Неизвестная ошибка сервера.');
+        setLoading(false);
         return;
       }
 
-      lastResult = data;
-      renderTable(data);
+      _currentJobId = data.job_id;
+      _startPolling();
 
     } catch (err) {
       showError('Ошибка соединения с сервером: ' + err.message);
-    } finally {
       setLoading(false);
     }
+  }
+
+  function _startPolling() {
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollTimer = setInterval(_pollJob, 1000);
+  }
+
+  function _stopPolling() {
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
+  }
+
+  async function _pollJob() {
+    if (!_currentJobId) { _stopPolling(); return; }
+    try {
+      const resp = await fetch(`/compare/jobs/${_currentJobId}`);
+      const data = await resp.json();
+
+      if (!resp.ok || data.error) {
+        _stopPolling();
+        showError(data.error || 'Ошибка получения статуса задания.');
+        setLoading(false);
+        hideProgress();
+        return;
+      }
+
+      updateProgress(data.progress_pct ?? 0, data.message || data.stage || '');
+
+      if (data.status === 'completed') {
+        _stopPolling();
+        hideProgress();
+        setLoading(false);
+        _currentJobId = null;
+        lastResult = data.result;
+        renderTable(data.result);
+
+      } else if (data.status === 'failed') {
+        _stopPolling();
+        hideProgress();
+        setLoading(false);
+        _currentJobId = null;
+        showError(data.error || 'Ошибка при обработке файлов.');
+
+      } else if (data.status === 'cancelled') {
+        _stopPolling();
+        hideProgress();
+        setLoading(false);
+        _currentJobId = null;
+      }
+    } catch (err) {
+      // Сеть недоступна — пробуем снова на следующем тике
+    }
+  }
+
+  async function cancelCompare() {
+    if (!_currentJobId) return;
+    const jobId = _currentJobId;
+    _stopPolling();
+    document.getElementById('btnCancel').disabled = true;
+    document.getElementById('progressStage').textContent = 'Отмена…';
+    try {
+      await fetch(`/compare/jobs/${jobId}`, { method: 'DELETE' });
+    } catch (_) {}
+    _currentJobId = null;
+    hideProgress();
+    setLoading(false);
   }
 
   // ============================================================
@@ -971,6 +1130,10 @@
         renderTable(data);
       });
     });
+
+    // Применяем текущий масштаб
+    const tbl = wrapper.querySelector('table');
+    if (tbl && _tableZoom !== 100) tbl.style.zoom = `${_tableZoom / 100}`;
   }
 
   // ============================================================
@@ -1055,12 +1218,39 @@
     document.getElementById('alert').style.display = 'none';
   }
   function setLoading(on) {
-    const btn = document.getElementById('btnCompare');
-    const sp  = document.getElementById('spinner');
-    const lbl = document.getElementById('btnLabel');
+    const btn    = document.getElementById('btnCompare');
+    const sp     = document.getElementById('spinner');
+    const lbl    = document.getElementById('btnLabel');
+    const cancel = document.getElementById('btnCancel');
     btn.disabled = on;
-    sp.style.display  = on ? 'block' : 'none';
-    lbl.textContent = on ? 'Анализируем...' : '⚡ Сравнить';
+    sp.style.display     = on ? 'block' : 'none';
+    lbl.textContent      = on ? 'Анализируем…' : '⚡ Сравнить';
+    cancel.style.display = on ? '' : 'none';
+    cancel.disabled      = false;
+    if (on) {
+      document.getElementById('progressSection').classList.add('visible');
+      updateProgress(0, 'Загрузка файлов…');
+    }
+  }
+
+  function updateProgress(pct, message) {
+    document.getElementById('progressFill').style.width = `${pct}%`;
+    document.getElementById('progressPct').textContent  = `${Math.round(pct)}%`;
+    if (message) document.getElementById('progressStage').textContent = message;
+  }
+
+  function hideProgress() {
+    document.getElementById('progressSection').classList.remove('visible');
+  }
+
+  // ============================================================
+  // Zoom таблицы
+  // ============================================================
+  function adjustZoom(delta) {
+    _tableZoom = Math.min(150, Math.max(70, _tableZoom + delta));
+    const table = document.querySelector('#tableWrapper table');
+    if (table) table.style.zoom = `${_tableZoom / 100}`;
+    document.getElementById('zoomLabel').textContent = `${_tableZoom}%`;
   }
   function esc(str) {
     return String(str ?? '')
