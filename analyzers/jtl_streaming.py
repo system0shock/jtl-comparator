@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import csv
 import os
+import shutil
 import tempfile
+import uuid
 from pathlib import Path
 from itertools import zip_longest
 from typing import Iterator
@@ -80,6 +82,8 @@ def _stream_all_rows(path: Path) -> Iterator[dict[str, object]]:
             )
 
         for raw_row in reader:
+            if len(raw_row) > len(header):
+                continue
             padded_row = list(zip_longest(header, raw_row, fillvalue=""))
             row = {key: value for key, value in padded_row}
             normalized = _normalize_row(row, path)
@@ -116,6 +120,8 @@ def _scan_jtl_metadata(path: Path) -> tuple[bool, bool, bool, bool]:
 
         for raw_row in reader:
             saw_any_row = True
+            if len(raw_row) > len(header):
+                continue
             padded_row = list(zip_longest(header, raw_row, fillvalue=""))
             row = {key: value for key, value in padded_row}
             if _is_tc_url(row.get("URL")):
@@ -216,10 +222,27 @@ def _read_label_frame(path: Path) -> pd.DataFrame:
     return df.dropna(subset=["elapsed", "timeStamp"])
 
 
+def _create_spill_dir(base_dir: Path) -> Path:
+    candidate_roots = [Path(tempfile.gettempdir()), base_dir / ".tmp-runtime"]
+
+    for root in candidate_roots:
+        root.mkdir(parents=True, exist_ok=True)
+        candidate = root / f"jtl-streaming-{uuid.uuid4().hex}"
+        try:
+            candidate.mkdir()
+            probe = candidate / "probe.txt"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink()
+            return candidate
+        except PermissionError:
+            shutil.rmtree(candidate, ignore_errors=True)
+
+    raise PermissionError("Unable to create a writable spill directory for JTL streaming.")
+
+
 def aggregate_streaming_jtl(filepath: str | Path, mode: str = "auto") -> pd.DataFrame:
     path = Path(filepath)
-    tmp_root = Path.cwd() / ".tmp-test" / "jtl-streaming"
-    tmp_root.mkdir(parents=True, exist_ok=True)
+    tmp_root = _create_spill_dir(path.parent)
 
     label_files: dict[str, Path] = {}
     label_order: list[str] = []
@@ -231,9 +254,7 @@ def aggregate_streaming_jtl(filepath: str | Path, mode: str = "auto") -> pd.Data
         if existing is not None:
             return existing
 
-        fd, raw_path = tempfile.mkstemp(dir=tmp_root, suffix=".csv", prefix="label-")
-        os.close(fd)
-        file_path = Path(raw_path)
+        file_path = tmp_root / f"label-{len(label_files):06d}.csv"
         with file_path.open("w", newline="", encoding="utf-8") as handle:
             writer = csv.writer(handle)
             writer.writerow(["timeStamp", "elapsed", "success"])
@@ -287,3 +308,4 @@ def aggregate_streaming_jtl(filepath: str | Path, mode: str = "auto") -> pd.Data
                 file_path.unlink()
             except FileNotFoundError:
                 pass
+        shutil.rmtree(tmp_root, ignore_errors=True)

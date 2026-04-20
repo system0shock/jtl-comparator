@@ -189,6 +189,20 @@ class ParseJtlModeTests(unittest.TestCase):
 
         pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
 
+    def test_streaming_rows_skips_overlong_rows_like_parse_jtl(self):
+        csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,B,true,https://example/a\n"
+            "2,120,A,true,,EXTRA\n"
+        )
+
+        path = self._write_jtl(csv)
+
+        expected = parse_jtl(path, mode="auto").reset_index(drop=True)
+        actual = pd.DataFrame(list(stream_jtl_rows(path, mode="auto"))).reindex(columns=expected.columns)
+
+        pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+
     def test_exact_aggregate_matches_current_compare_pipeline(self):
         csv1 = (
             "timeStamp,elapsed,label,success,URL\n"
