@@ -201,8 +201,22 @@ class ParseJtlModeTests(unittest.TestCase):
 
         pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
 
-    def test_exact_aggregate_matches_current_compare_pipeline(self):
+    def test_streaming_rows_keeps_short_rows_with_missing_trailing_url(self):
         csv = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1,100,TC,true\n"
+            "2,120,HTTP,true,https://example/a\n"
+        )
+
+        path = self._write_jtl(csv)
+
+        expected = parse_jtl(path, mode="auto").reset_index(drop=True)
+        actual = pd.DataFrame(list(stream_jtl_rows(path, mode="auto"))).reindex(columns=expected.columns)
+
+        pd.testing.assert_frame_equal(actual, expected, check_dtype=False)
+
+    def test_exact_aggregate_matches_current_compare_pipeline(self):
+        csv1 = (
             "timeStamp,elapsed,label,success,URL\n"
             "1000,100,A,true,\n"
             "2000,140,A,false,\n"
@@ -210,13 +224,48 @@ class ParseJtlModeTests(unittest.TestCase):
             "4000,260,B,true,\n"
             "5000,320,B,false,\n"
         )
+        csv2 = (
+            "timeStamp,elapsed,label,success,URL\n"
+            "1000,90,A,true,\n"
+            "2000,130,A,false,\n"
+            "3000,210,B,true,\n"
+            "4000,270,B,true,\n"
+            "5000,300,B,false,\n"
+        )
 
-        path = self._write_jtl(csv)
+        path1 = self._write_jtl(csv1)
+        path2 = self._write_jtl(csv2)
 
-        expected = aggregate(parse_jtl(path, mode="auto"))
-        actual = aggregate_streaming_jtl(path, mode="auto")
+        expected = compare(
+            parse_jtl(path1, mode="auto"),
+            parse_jtl(path2, mode="auto"),
+            "Run 1",
+            "Run 2",
+        )
+        actual = compare(
+            pd.DataFrame(list(stream_jtl_rows(path1, mode="auto"))),
+            pd.DataFrame(list(stream_jtl_rows(path2, mode="auto"))),
+            "Run 1",
+            "Run 2",
+        )
 
-        pd.testing.assert_frame_equal(actual, expected)
+        self.assertEqual(actual, expected)
+        pd.testing.assert_frame_equal(
+            aggregate_streaming_jtl(path1, mode="auto"),
+            aggregate(parse_jtl(path1, mode="auto")),
+        )
+
+    def test_streaming_rows_raises_on_header_only_like_parse_jtl(self):
+        csv = "timeStamp,elapsed,label,success,URL\n"
+
+        with self.assertRaisesRegex(ValueError, "пустой"):
+            list(stream_jtl_rows(self._write_jtl(csv), mode="auto"))
+
+    def test_streaming_rows_raises_like_parse_jtl_on_empty_file(self):
+        path = self._write_jtl("")
+
+        with self.assertRaisesRegex(ValueError, "No columns to parse from file"):
+            list(stream_jtl_rows(path, mode="auto"))
 
     def test_parse_jtl_samplers_requires_url_column(self):
         csv = (
