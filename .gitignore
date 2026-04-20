@@ -10,6 +10,7 @@ CLAUDE.md
 
 # Local IDE assistant state
 .claude/
+.worktrees/
 
 # Local secrets
 gigachat.key
