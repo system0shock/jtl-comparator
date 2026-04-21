@@ -116,6 +116,12 @@ def _sync_job_from_disk(job_id: str) -> dict | None:
         return _registry.get_job(job_id)
 
 
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    limit_gb = app.config["MAX_CONTENT_LENGTH"] / (1024 ** 3)
+    return jsonify({"error": f"Файл слишком большой. Максимальный размер: {limit_gb:.0f} ГБ."}), 413
+
+
 @app.route("/")
 def index():
     """Отдаёт главную страницу приложения."""

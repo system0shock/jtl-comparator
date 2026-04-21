@@ -920,7 +920,17 @@
 
     try {
       const resp = await fetch('/compare/jobs', { method: 'POST', body: fd });
-      const data = await resp.json();
+
+      let data;
+      if ((resp.headers.get('content-type') || '').includes('application/json')) {
+        data = await resp.json();
+      } else {
+        const text = await resp.text();
+        showError(`Ошибка сервера (HTTP ${resp.status}). Проверьте размер файлов или перезапустите сервер.`);
+        console.error('Non-JSON response:', text.slice(0, 500));
+        setLoading(false);
+        return;
+      }
 
       if (!resp.ok || data.error) {
         showError(data.error || 'Неизвестная ошибка сервера.');

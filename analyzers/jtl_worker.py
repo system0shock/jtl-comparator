@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -33,7 +34,16 @@ _BUILD_START  = 90.0
 def _write(path: Path, data: dict) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)
+    # On Windows, os.replace() raises PermissionError if the target is briefly
+    # locked by a concurrent reader (e.g. the polling endpoint). Retry a few times.
+    for attempt in range(10):
+        try:
+            tmp.replace(path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.01)
 
 
 def _progress(work_dir: Path, pct: float, stage: str, message: str) -> None:
