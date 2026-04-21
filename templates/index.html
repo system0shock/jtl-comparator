@@ -747,8 +747,9 @@
   <!-- Ошибка -->
   <div class="alert" id="alert"></div>
 
-  <!-- Таблица результатов -->
-  <div id="resultSection" style="display:none">
+  <!-- Таблица результатов — вынесена за пределы .container чтобы растянуться на всю ширину -->
+</div><!-- /container -->
+<div id="resultSection" style="display:none; padding: 0 24px 24px;">
     <div class="table-header">
       <h2 id="tableTitle">Результаты сравнения</h2>
       <div class="zoom-controls">
@@ -760,14 +761,14 @@
     <div class="table-wrapper" id="tableWrapper">
       <!-- Заполняется JS -->
     </div>
-  </div>
+</div><!-- /resultSection -->
 
+<div class="container">
   <!-- Пустое состояние -->
   <div class="empty-state" id="emptyState">
     <div class="empty-state-icon">📊</div>
     <p>Загрузите два JTL-файла и нажмите «Сравнить»</p>
   </div>
-
 </div><!-- /container -->
 
 <script>
