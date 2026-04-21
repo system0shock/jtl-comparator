@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>JTL Comparator</title>
+  <link rel="stylesheet" href="https://unpkg.com/uplot@1.6.31/dist/uPlot.min.css" />
+  <script src="https://unpkg.com/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
   <style>
     /* ===================== RESET & BASE ===================== */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -56,7 +58,7 @@
     }
 
     .container {
-      max-width: 1400px;
+      max-width: 100%;
       margin: 0 auto;
       padding: 28px 24px;
     }
@@ -504,9 +506,536 @@
       transform: translateY(0);
     }
 
+    /* ===================== VM METRICS ===================== */
+    .vm-panel {
+      margin-top: 18px;
+      background: linear-gradient(180deg, rgba(79,142,247,0.08), rgba(79,142,247,0.03));
+      border: 1px solid rgba(79,142,247,0.28);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .vm-panel summary {
+      cursor: pointer;
+      padding: 14px 16px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .vm-panel summary::-webkit-details-marker { display: none; }
+    .vm-panel summary::before {
+      content: "▸";
+      color: rgba(255,255,255,0.7);
+    }
+    .vm-panel[open] summary::before { content: "▾"; }
+    .vm-panel-body {
+      border-top: 1px solid rgba(79,142,247,0.2);
+      padding: 18px 16px 20px;
+      display: grid;
+      gap: 16px;
+    }
+    .vm-controls-sticky {
+      position: sticky;
+      top: 10px;
+      z-index: 15;
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(21,24,37,0.96), rgba(15,17,23,0.96));
+      border: 1px solid rgba(79,142,247,0.22);
+      border-radius: 14px;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.28);
+      backdrop-filter: blur(8px);
+    }
+    .vm-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .vm-row-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      min-width: 78px;
+    }
+    .vm-profile-row select,
+    .vm-input,
+    .vm-textarea,
+    .modal-input,
+    .modal-table input {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .vm-profile-row select:focus,
+    .vm-input:focus,
+    .vm-textarea:focus,
+    .modal-input:focus,
+    .modal-table input:focus {
+      border-color: var(--accent);
+    }
+    .vm-profile-row select {
+      min-width: 220px;
+      flex: 1 1 220px;
+    }
+    .vm-url-input {
+      min-width: 280px;
+      flex: 1 1 320px;
+    }
+    .vm-range-tabs {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .vm-range-tab {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .vm-range-tab.active {
+      background: rgba(79,142,247,0.18);
+      border-color: rgba(79,142,247,0.42);
+      color: #fff;
+    }
+    .vm-manual-inputs {
+      display: none;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .vm-group-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      flex: 1 1 auto;
+    }
+    .vm-group-pill {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vm-group-pill.active {
+      background: rgba(79,142,247,0.16);
+      border-color: rgba(79,142,247,0.42);
+      color: #fff;
+    }
+    .vm-group-pill.partial {
+      border-color: rgba(240,136,62,0.4);
+      color: #ffd1ad;
+    }
+    .vm-group-pill-count {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .vm-group-pill.active .vm-group-pill-count {
+      color: #d9e7ff;
+    }
+    .vm-custom-panel {
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      overflow: hidden;
+    }
+    .vm-custom-panel summary {
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .vm-custom-panel summary::-webkit-details-marker { display: none; }
+    .vm-custom-panel summary::before {
+      content: "▸";
+      margin-right: 6px;
+      color: rgba(255,255,255,0.5);
+    }
+    .vm-custom-panel[open] summary::before { content: "▾"; }
+    .vm-custom-panel .vm-textarea {
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      border-radius: 0;
+      min-height: 92px;
+      resize: vertical;
+      font-family: Consolas, "Courier New", monospace;
+      line-height: 1.45;
+    }
+    .vm-time-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(79,142,247,0.12);
+      color: #cfe1ff;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .vm-alert {
+      display: none;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 13px;
+      border: 1px solid rgba(79,142,247,0.25);
+      background: rgba(79,142,247,0.08);
+      color: #dce8ff;
+    }
+    .vm-alert.error {
+      display: block;
+      border-color: rgba(231,76,60,0.35);
+      background: rgba(231,76,60,0.12);
+      color: #f3b2aa;
+    }
+    .vm-alert.info {
+      display: block;
+    }
+    #vmResultsArea {
+      display: grid;
+      gap: 18px;
+    }
+    .vm-group-section {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      background: linear-gradient(180deg, rgba(34,38,58,0.56), rgba(17,20,31,0.72));
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 14px;
+    }
+    .vm-group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .vm-group-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .vm-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 14px;
+    }
+    .vm-card {
+      background: linear-gradient(180deg, rgba(34,38,58,0.96), rgba(20,23,34,0.98));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      min-height: 280px;
+    }
+    .vm-card-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .vm-card-title {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+    .vm-card-subtitle {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 3px;
+    }
+    .vm-card-error {
+      color: #f3b2aa;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .vm-card-query {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.45;
+      word-break: break-word;
+      font-family: Consolas, "Courier New", monospace;
+    }
+    .vm-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .vm-compare-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .vm-stat,
+    .vm-run-stats,
+    .vm-delta-panel {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .vm-stat-label,
+    .vm-run-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .vm-run-label {
+      color: #dbe6ff;
+      margin-bottom: 8px;
+    }
+    .vm-stat-value {
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .vm-stat-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .vm-stat-row:last-child {
+      margin-bottom: 0;
+    }
+    .vm-delta-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+    }
+    .vm-delta-badge.critical { color: var(--red); background: var(--red-bg); }
+    .vm-delta-badge.warning  { color: var(--yellow); background: var(--yellow-bg); }
+    .vm-delta-badge.improved { color: var(--green); background: var(--green-bg); }
+    .vm-delta-badge.neutral  { color: var(--muted); }
+    .vm-chart-shell {
+      display: grid;
+      gap: 8px;
+    }
+    .vm-chart-container {
+      position: relative;
+      width: 100%;
+      min-height: 180px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(79,142,247,0.10), rgba(79,142,247,0.03));
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .vm-chart-note {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .vm-chart-note strong {
+      color: #dbe6ff;
+      font-weight: 600;
+    }
+    .vm-chart-tooltip {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 3;
+      max-width: calc(100% - 20px);
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(9,11,18,0.84);
+      border: 1px solid rgba(79,142,247,0.35);
+      box-shadow: 0 10px 20px rgba(0,0,0,0.28);
+      font-size: 11px;
+      color: #e9ecff;
+      pointer-events: none;
+      display: none;
+      white-space: nowrap;
+    }
+    .vm-chart-tooltip.visible {
+      display: block;
+    }
+    .vm-chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .vm-chart-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .vm-chart-legend i {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+    }
+    .vm-fallback-note {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .vm-fallback-chart {
+      display: block;
+      width: 100%;
+      height: 180px;
+    }
+    .vm-fallback-grid {
+      stroke: rgba(255,255,255,0.08);
+      stroke-width: 1;
+    }
+    .vm-fallback-axis {
+      stroke: rgba(255,255,255,0.28);
+      stroke-width: 1;
+    }
+    .vm-fallback-label {
+      fill: #9ea6c7;
+      font-size: 10px;
+      font-family: var(--font);
+    }
+    .vm-empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 18px;
+      text-align: center;
+      border: 1px dashed rgba(122,127,154,0.35);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.02);
+    }
+    .vm-preset-group {
+      background: rgba(26,29,39,0.8);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+    .vm-preset-group h4 {
+      color: #fff;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    .vm-preset-option,
+    .vm-modal-preset-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      color: var(--text);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .vm-preset-option:last-child,
+    .vm-modal-preset-option:last-child {
+      margin-bottom: 0;
+    }
+    .uplot {
+      font-family: var(--font);
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(9,11,18,0.72);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-content {
+      width: min(860px, 100%);
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+      background: linear-gradient(180deg, #1b1f2f, #11141f);
+      border: 1px solid rgba(79,142,247,0.25);
+      border-radius: 14px;
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      box-shadow: 0 24px 56px rgba(0,0,0,0.42);
+    }
+    .modal-content h3,
+    .modal-content h4 {
+      color: #fff;
+    }
+    .modal-section {
+      display: grid;
+      gap: 8px;
+    }
+    .modal-table {
+      display: grid;
+      gap: 8px;
+    }
+    .modal-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .modal-presets {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px 12px;
+    }
+
     @media (max-width: 960px) {
       .upload-section { grid-template-columns: 1fr; }
       .rules-grid { grid-template-columns: 1fr; }
+      .vm-row,
+      .modal-row,
+      .modal-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .modal-row {
+        grid-template-columns: 1fr;
+      }
+      .vm-stats,
+      .vm-compare-stats {
+        grid-template-columns: 1fr;
+      }
+      .vm-controls-sticky {
+        position: static;
+      }
+      .vm-chart-note {
+        flex-direction: column;
+      }
     }
   </style>
 </head>
@@ -677,7 +1206,92 @@
     <p>Загрузите два JTL-файла и нажмите «Сравнить»</p>
   </div>
 
+  <div id="vmSection" style="display:none">
+    <details class="vm-panel" id="vmPanel" open>
+      <summary>
+        <span>📈 Метрики инфраструктуры</span>
+        <span class="vm-time-badge" id="vmTimeBadge"></span>
+      </summary>
+      <div class="vm-panel-body">
+        <div class="vm-controls-sticky">
+          <div class="vm-row vm-profile-row">
+            <select id="vmProfileSelect"></select>
+            <button class="btn btn-secondary" type="button" onclick="openProfileModal()">+ Новый</button>
+            <button class="btn btn-secondary" type="button" onclick="editCurrentProfile()">✏ Ред.</button>
+            <button class="btn btn-secondary" type="button" onclick="deleteCurrentProfile()">🗑</button>
+            <input class="vm-input vm-url-input" id="vmUrl" placeholder="http://vm:8428" />
+          </div>
+
+          <div class="vm-row vm-timerange-row">
+            <span class="vm-row-label">Диапазон</span>
+            <div class="vm-range-tabs" id="vmRangeTabs">
+              <button type="button" class="vm-range-tab active" data-mode="auto_both">Авто (оба)</button>
+              <button type="button" class="vm-range-tab" data-mode="auto_run1">Run 1</button>
+              <button type="button" class="vm-range-tab" data-mode="auto_run2">Run 2</button>
+              <button type="button" class="vm-range-tab" data-mode="manual">Вручную</button>
+            </div>
+            <div id="vmManualInputs" class="vm-manual-inputs">
+              <input class="vm-input" type="datetime-local" id="vmStart" />
+              <span>—</span>
+              <input class="vm-input" type="datetime-local" id="vmEnd" />
+            </div>
+          </div>
+
+          <div class="vm-row vm-groups-row">
+            <div class="vm-group-pills" id="vmGroupPills"></div>
+            <button class="btn btn-primary" id="btnLoadMetrics" type="button" onclick="loadMetrics()">
+              <span class="spinner" id="vmSpinner"></span>
+              <span id="vmBtnLabel">📊 Загрузить метрики</span>
+            </button>
+          </div>
+
+          <details class="vm-custom-panel">
+            <summary>Custom PromQL</summary>
+            <textarea class="vm-textarea" id="vmCustomQuery" placeholder="По одному запросу PromQL на строку. Можно использовать {{ '{{job}}' }}, {{ '{{db_job}}' }}, {{ '{{http_job}}' }}, {{ '{{node_job}}' }}, {{ '{{namespace}}' }}, {{ '{{pod_selector}}' }}."></textarea>
+          </details>
+        </div>
+
+        <div id="vmAlert" class="vm-alert"></div>
+        <div id="vmResultsArea"></div>
+      </div>
+    </details>
+  </div>
 </div><!-- /container -->
+
+<div id="vmProfileModal" class="modal">
+  <div class="modal-content">
+    <h3>Профиль системы</h3>
+    <input id="profileName" class="modal-input" placeholder="Название АС" />
+    <input id="profileVmUrl" class="modal-input" placeholder="http://vm:8428" />
+
+    <div class="modal-section">
+      <h4>Переменные (vars)</h4>
+      <div id="profileVarsTable" class="modal-table"></div>
+      <button class="btn btn-secondary" type="button" onclick="addProfileVar()">+ Переменная</button>
+    </div>
+
+    <div class="modal-section">
+      <h4>Label mapping</h4>
+      <div id="profileLabelMapTable" class="modal-table"></div>
+      <button class="btn btn-secondary" type="button" onclick="addLabelMapEntry()">+ Маппинг</button>
+    </div>
+
+    <div class="modal-section">
+      <h4>Пресеты</h4>
+      <div id="profilePresetList" class="modal-presets"></div>
+    </div>
+
+    <div class="modal-section">
+      <h4>Custom PromQL</h4>
+      <textarea id="profileCustomQueries" class="vm-textarea" placeholder="Запросы профиля, по одному на строку"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" type="button" onclick="saveProfileFromModal()">Сохранить</button>
+      <button class="btn btn-secondary" type="button" onclick="closeProfileModal()">Отмена</button>
+    </div>
+  </div>
+</div>
 
 <script>
   // ============================================================
@@ -703,6 +1317,799 @@
     'samples_2', 'avg_2', 'p95_2', 'p99_2', 'rps_2', 'err_2',
     'd_avg', 'd_p95', 'd_p99', 'd_rps'
   ]);
+  const VM_URL_DEFAULT = {{ vm_url_default|tojson }};
+  const VM_PROFILE_STORAGE_KEY = 'jtlComparator.vmProfiles';
+  const VM_PRESETS = [
+    { id: 'cpu', group: 'Инфраструктура', name: 'CPU Usage', query: "1 - avg(rate(node_cpu_seconds_total{job='{{ '{{job}}' }}',mode='idle'}[2m]))" },
+    { id: 'mem', group: 'Инфраструктура', name: 'Memory Used %', query: "(1 - node_memory_MemAvailable_bytes{job='{{ '{{job}}' }}'} / node_memory_MemTotal_bytes{job='{{ '{{job}}' }}'}) * 100" },
+    { id: 'jvm_heap', group: 'JVM', name: 'JVM Heap Used MB', query: "avg(jvm_memory_used_bytes{job='{{ '{{job}}' }}',area='heap'}) / 1024 / 1024" },
+    { id: 'jvm_gc', group: 'JVM', name: 'JVM GC Pause p99 ms', query: "histogram_quantile(0.99, rate(jvm_gc_pause_seconds_bucket{job='{{ '{{job}}' }}'}[2m])) * 1000" },
+    { id: 'jvm_thr', group: 'JVM', name: 'JVM Threads Live', query: "avg(jvm_threads_live_threads{job='{{ '{{job}}' }}'})" },
+    { id: 'pg_conn', group: 'PostgreSQL', name: 'PG Active Connections', query: "pg_stat_activity_count{job='{{ '{{db_job}}' }}',state='active'}" },
+    { id: 'pg_locks', group: 'PostgreSQL', name: 'PG Locks', query: "pg_locks_count{job='{{ '{{db_job}}' }}'}" },
+    { id: 'pg_qtime', group: 'PostgreSQL', name: 'PG Query Time p95 ms', query: "histogram_quantile(0.95, rate(pg_stat_statements_seconds_bucket{job='{{ '{{db_job}}' }}'}[2m])) * 1000" },
+    { id: 'http_p50', group: 'HTTP', name: 'HTTP Latency p50 ms', query: "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job='{{ '{{job}}' }}'}[2m])) by (le)) * 1000" },
+    { id: 'http_p95', group: 'HTTP', name: 'HTTP Latency p95 ms', query: "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job='{{ '{{job}}' }}'}[2m])) by (le)) * 1000" },
+    { id: 'http_p99', group: 'HTTP', name: 'HTTP Latency p99 ms', query: "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job='{{ '{{job}}' }}'}[2m])) by (le)) * 1000" }
+  ];
+  let vmTimeMode = 'auto';
+  let vmEditingProfileId = null;
+
+  function getDefaultVmUrl() {
+    if (typeof VM_URL_DEFAULT === 'string' && VM_URL_DEFAULT.trim()) {
+      return VM_URL_DEFAULT.trim();
+    }
+    const host = window.location.hostname || 'localhost';
+    return `http://${host}:8428`;
+  }
+
+  function buildSeedProfiles() {
+    const vmUrl = getDefaultVmUrl();
+    const labelMap = {
+      labels: {
+        'fake-jvm-app': 'Test / JVM приложение',
+        'postgres-exporter': 'Test / PostgreSQL',
+        'fake-http-app': 'Test / HTTP сервис',
+        'node-exporter': 'Test / Сервер'
+      }
+    };
+
+    return [
+      {
+        id: 'docker-all-in-one',
+        name: 'Docker Demo / Все метрики',
+        vm_url: vmUrl,
+        vars: {
+          job: 'fake-jvm-app',
+          db_job: 'postgres-exporter'
+        },
+        label_map: labelMap,
+        selected_presets: ['pg_conn', 'pg_locks'],
+        custom_queries: [
+          "CPU Usage / node-exporter :: 1 - avg(rate(node_cpu_seconds_total{job='node-exporter',mode='idle'}[2m]))",
+          "Memory Used % / node-exporter :: (1 - node_memory_MemAvailable_bytes{job='node-exporter'} / node_memory_MemTotal_bytes{job='node-exporter'}) * 100",
+          "JVM Heap Used MB / fake-jvm-app :: avg(jvm_memory_used_bytes{job='fake-jvm-app',area='heap'}) / 1024 / 1024",
+          "JVM GC Pause p99 ms / fake-jvm-app :: histogram_quantile(0.99, sum(rate(jvm_gc_pause_seconds_bucket{job='fake-jvm-app'}[2m])) by (le)) * 1000",
+          "JVM Threads Live / fake-jvm-app :: avg(jvm_threads_live_threads{job='fake-jvm-app'})",
+          "HTTP Latency p50 ms / fake-http-app :: histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{job='fake-http-app'}[2m])) by (le)) * 1000",
+          "HTTP Latency p95 ms / fake-http-app :: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job='fake-http-app'}[2m])) by (le)) * 1000",
+          "HTTP Latency p99 ms / fake-http-app :: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{job='fake-http-app'}[2m])) by (le)) * 1000"
+        ].join('\n')
+      },
+      {
+        id: 'docker-infra',
+        name: 'Docker Demo / Инфраструктура',
+        vm_url: vmUrl,
+        vars: {
+          job: 'node-exporter',
+          db_job: 'postgres-exporter'
+        },
+        label_map: labelMap,
+        selected_presets: ['cpu', 'mem'],
+        custom_queries: ''
+      },
+      {
+        id: 'docker-jvm',
+        name: 'Docker Demo / JVM',
+        vm_url: vmUrl,
+        vars: {
+          job: 'fake-jvm-app',
+          db_job: 'postgres-exporter'
+        },
+        label_map: labelMap,
+        selected_presets: ['jvm_heap', 'jvm_gc', 'jvm_thr'],
+        custom_queries: ''
+      },
+      {
+        id: 'docker-http',
+        name: 'Docker Demo / HTTP',
+        vm_url: vmUrl,
+        vars: {
+          job: 'fake-http-app',
+          db_job: 'postgres-exporter'
+        },
+        label_map: labelMap,
+        selected_presets: ['http_p50', 'http_p95', 'http_p99'],
+        custom_queries: ''
+      },
+      {
+        id: 'docker-postgres',
+        name: 'Docker Demo / PostgreSQL',
+        vm_url: vmUrl,
+        vars: {
+          job: 'fake-jvm-app',
+          db_job: 'postgres-exporter'
+        },
+        label_map: labelMap,
+        selected_presets: ['pg_conn', 'pg_locks'],
+        custom_queries: ''
+      }
+    ];
+  }
+
+  function newVmProfileId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    return `vm-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  }
+
+  function loadProfiles() {
+    const seeded = buildSeedProfiles();
+    try {
+      const raw = localStorage.getItem(VM_PROFILE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed) && parsed.length) {
+        const seededMap = new Map(seeded.map((profile) => [profile.id, profile]));
+        const merged = parsed.slice();
+        seeded.forEach((profile) => {
+          if (!parsed.some((item) => item && item.id === profile.id)) {
+            merged.push(profile);
+          }
+        });
+        if (merged.length !== parsed.length) {
+          saveProfiles(merged);
+        }
+        return merged.map((profile) => (
+          profile && seededMap.has(profile.id)
+            ? { ...seededMap.get(profile.id), ...profile }
+            : profile
+        ));
+      }
+    } catch (err) {
+      console.warn('Failed to load VM profiles', err);
+    }
+    saveProfiles(seeded);
+    return seeded;
+  }
+
+  function saveProfiles(profiles) {
+    localStorage.setItem(VM_PROFILE_STORAGE_KEY, JSON.stringify(profiles || []));
+  }
+
+  function refreshVmProfileSelect(selectedId = null) {
+    const select = document.getElementById('vmProfileSelect');
+    if (!select) return;
+    const profiles = loadProfiles();
+    const selected = selectedId !== null ? selectedId : select.value;
+    select.innerHTML = ['<option value="">Без профиля</option>']
+      .concat(profiles.map((profile) => `<option value="${esc(profile.id)}">${esc(profile.name || 'Без названия')}</option>`))
+      .join('');
+    select.value = profiles.some((profile) => profile.id === selected) ? selected : '';
+  }
+
+  function getCurrentProfile() {
+    const selectedId = document.getElementById('vmProfileSelect')?.value;
+    if (!selectedId) return null;
+    return loadProfiles().find((profile) => profile.id === selectedId) || null;
+  }
+
+  function groupPresets() {
+    return VM_PRESETS.reduce((acc, preset) => {
+      if (!acc[preset.group]) acc[preset.group] = [];
+      acc[preset.group].push(preset);
+      return acc;
+    }, {});
+  }
+
+  function renderPresetCheckboxGroups(containerId, inputName, selectedIds = []) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const groups = groupPresets();
+    const selectedSet = new Set(selectedIds || []);
+    container.innerHTML = Object.entries(groups).map(([groupName, presets]) => {
+      const items = presets.map((preset) => `
+        <label class="${inputName === 'profilePreset' ? 'vm-modal-preset-option' : 'vm-preset-option'}">
+          <input type="checkbox" name="${inputName}" value="${esc(preset.id)}" ${selectedSet.has(preset.id) ? 'checked' : ''} />
+          <span>${esc(preset.name)}</span>
+        </label>
+      `).join('');
+      if (inputName === 'profilePreset') {
+        return `<div><h4>${esc(groupName)}</h4>${items}</div>`;
+      }
+      return `<div class="vm-preset-group"><h4>${esc(groupName)}</h4>${items}</div>`;
+    }).join('');
+  }
+
+  function getSelectedPresetIds() {
+    return Array.from(document.querySelectorAll('#vmPresets input[name="vmPreset"]:checked')).map((input) => input.value);
+  }
+
+  function setSelectedPresetIds(ids = []) {
+    const selected = new Set(ids);
+    document.querySelectorAll('#vmPresets input[name="vmPreset"]').forEach((input) => {
+      input.checked = selected.has(input.value);
+    });
+  }
+
+  function clearVmCards() {
+    const cards = document.getElementById('vmCards');
+    if (cards) {
+      cards.innerHTML = '<div class="vm-empty">Выберите пресеты или укажите custom PromQL, затем загрузите метрики.</div>';
+    }
+  }
+
+  function showVmAlert(message, type = 'info') {
+    const el = document.getElementById('vmAlert');
+    if (!el) return;
+    el.textContent = message;
+    el.className = `vm-alert ${type}`;
+  }
+
+  function hideVmAlert() {
+    const el = document.getElementById('vmAlert');
+    if (!el) return;
+    el.textContent = '';
+    el.className = 'vm-alert';
+  }
+
+  function setVmLoading(isLoading) {
+    const btn = document.getElementById('btnLoadMetrics');
+    if (!btn) return;
+    btn.disabled = isLoading;
+    btn.textContent = isLoading ? 'Загружаем метрики...' : '📈 Загрузить метрики';
+  }
+
+  function toDatetimeLocalValue(unixSec) {
+    if (!Number.isFinite(unixSec)) return '';
+    const date = new Date(unixSec * 1000);
+    const offsetMs = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  }
+
+  function fromDatetimeLocalValue(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    const time = date.getTime();
+    return Number.isNaN(time) ? null : Math.floor(time / 1000);
+  }
+
+  function getAutoVmRange() {
+    if (!lastResult) {
+      const now = Math.floor(Date.now() / 1000);
+      return { start: now - 15 * 60, end: now };
+    }
+    const starts = [lastResult.run1_start, lastResult.run2_start].filter((value) => Number.isFinite(value));
+    const ends = [lastResult.run1_end, lastResult.run2_end].filter((value) => Number.isFinite(value));
+    if (!starts.length || !ends.length) {
+      const now = Math.floor(Date.now() / 1000);
+      return { start: now - 15 * 60, end: now };
+    }
+    return {
+      start: starts.length ? Math.min(...starts) : null,
+      end: ends.length ? Math.max(...ends) : null
+    };
+  }
+
+  function formatVmTimeLabel(unixSec) {
+    if (!Number.isFinite(unixSec)) return '—';
+    return new Date(unixSec * 1000).toLocaleString('ru-RU', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  }
+
+  function updateVmTimeBadge() {
+    const badge = document.getElementById('vmTimeBadge');
+    if (!badge) return;
+    const range = vmTimeMode === 'auto'
+      ? getAutoVmRange()
+      : {
+          start: fromDatetimeLocalValue(document.getElementById('vmStart')?.value),
+          end: fromDatetimeLocalValue(document.getElementById('vmEnd')?.value)
+        };
+    if (!Number.isFinite(range.start) || !Number.isFinite(range.end)) {
+      badge.textContent = vmTimeMode === 'auto' ? 'Авто-диапазон недоступен' : 'Укажите ручной диапазон';
+      return;
+    }
+    badge.textContent = `${vmTimeMode === 'auto' ? 'Авто' : 'Ручной'}: ${formatVmTimeLabel(range.start)} → ${formatVmTimeLabel(range.end)}`;
+  }
+
+  function setVmTimeMode(mode) {
+    vmTimeMode = mode === 'manual' ? 'manual' : 'auto';
+    document.getElementById('vmModeAuto')?.classList.toggle('active', vmTimeMode === 'auto');
+    document.getElementById('vmModeManual')?.classList.toggle('active', vmTimeMode === 'manual');
+    document.getElementById('vmManualInputs').style.display = vmTimeMode === 'manual' ? 'flex' : 'none';
+    updateVmTimeBadge();
+  }
+
+  function clearVmForm() {
+    document.getElementById('vmUrl').value = getDefaultVmUrl();
+    document.getElementById('vmCustomQuery').value = '';
+    setSelectedPresetIds([]);
+    hideVmAlert();
+    clearVmCards();
+  }
+
+  function flattenLabelMap(labelMap) {
+    if (!labelMap || typeof labelMap !== 'object') return {};
+    return Object.values(labelMap).reduce((acc, bucket) => {
+      if (!bucket || typeof bucket !== 'object') return acc;
+      Object.entries(bucket).forEach(([real, display]) => {
+        if (real && display) acc[real] = display;
+      });
+      return acc;
+    }, {});
+  }
+
+  function applyLabelMap(name, labelMap) {
+    if (!labelMap) return name;
+    let result = String(name || '');
+    Object.entries(flattenLabelMap(labelMap)).forEach(([realLabel, displayName]) => {
+      result = result.split(realLabel).join(displayName);
+    });
+    return result;
+  }
+
+  function readModalRows(containerId) {
+    return Array.from(document.querySelectorAll(`#${containerId} .modal-row`)).map((row) => {
+      const inputs = row.querySelectorAll('input');
+      return {
+        key: inputs[0]?.value?.trim() || '',
+        value: inputs[1]?.value?.trim() || ''
+      };
+    });
+  }
+
+  function renderModalRows(containerId, rows, placeholders) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = rows.map((row, index) => `
+      <div class="modal-row">
+        <input value="${esc(row.key || '')}" placeholder="${esc(placeholders[0])}" />
+        <input value="${esc(row.value || '')}" placeholder="${esc(placeholders[1])}" />
+        <button class="btn btn-secondary" type="button" onclick="${containerId === 'profileVarsTable' ? 'removeProfileVarRow' : 'removeLabelMapRow'}(${index})">−</button>
+      </div>
+    `).join('');
+  }
+
+  function addProfileVar() {
+    const rows = readModalRows('profileVarsTable');
+    rows.push({ key: '', value: '' });
+    renderModalRows('profileVarsTable', rows, ['Имя переменной', 'Реальный label']);
+  }
+
+  function removeProfileVarRow(index) {
+    const rows = readModalRows('profileVarsTable').filter((_, rowIndex) => rowIndex !== index);
+    renderModalRows('profileVarsTable', rows.length ? rows : [{ key: '', value: '' }], ['Имя переменной', 'Реальный label']);
+  }
+
+  function addLabelMapEntry() {
+    const rows = readModalRows('profileLabelMapTable');
+    rows.push({ key: '', value: '' });
+    renderModalRows('profileLabelMapTable', rows, ['Реальный label', 'Читаемое название']);
+  }
+
+  function removeLabelMapRow(index) {
+    const rows = readModalRows('profileLabelMapTable').filter((_, rowIndex) => rowIndex !== index);
+    renderModalRows('profileLabelMapTable', rows.length ? rows : [{ key: '', value: '' }], ['Реальный label', 'Читаемое название']);
+  }
+
+  function collectModalVars() {
+    return readModalRows('profileVarsTable').reduce((acc, row) => {
+      if (row.key && row.value) acc[row.key] = row.value;
+      return acc;
+    }, {});
+  }
+
+  function collectModalLabelMap() {
+    const labels = readModalRows('profileLabelMapTable').reduce((acc, row) => {
+      if (row.key && row.value) acc[row.key] = row.value;
+      return acc;
+    }, {});
+    return Object.keys(labels).length ? { labels } : {};
+  }
+
+  function collectModalPresetIds() {
+    return Array.from(document.querySelectorAll('#profilePresetList input[name="profilePreset"]:checked')).map((input) => input.value);
+  }
+
+  function openProfileModal(profile = null) {
+    vmEditingProfileId = profile?.id || null;
+    document.getElementById('profileName').value = profile?.name || '';
+    document.getElementById('profileVmUrl').value = profile?.vm_url || VM_URL_DEFAULT || '';
+    document.getElementById('profileCustomQueries').value = profile?.custom_queries || '';
+    const varRows = Object.entries(profile?.vars || {}).map(([key, value]) => ({ key, value }));
+    renderModalRows(
+      'profileVarsTable',
+      varRows.length ? varRows : [{ key: '', value: '' }],
+      ['Имя переменной', 'Реальный label']
+    );
+    const labelRows = Object.entries(flattenLabelMap(profile?.label_map || {})).map(([key, value]) => ({ key, value }));
+    renderModalRows(
+      'profileLabelMapTable',
+      labelRows.length ? labelRows : [{ key: '', value: '' }],
+      ['Реальный label', 'Читаемое название']
+    );
+    renderPresetCheckboxGroups('profilePresetList', 'profilePreset', profile?.selected_presets || []);
+    document.getElementById('vmProfileModal').style.display = 'flex';
+  }
+
+  function closeProfileModal() {
+    document.getElementById('vmProfileModal').style.display = 'none';
+    vmEditingProfileId = null;
+  }
+
+  function applyProfile(profile) {
+    if (!profile) {
+      clearVmForm();
+      return;
+    }
+    document.getElementById('vmUrl').value = profile.vm_url || VM_URL_DEFAULT || '';
+    document.getElementById('vmCustomQuery').value = profile.custom_queries || '';
+    setSelectedPresetIds(profile.selected_presets || []);
+    hideVmAlert();
+    clearVmCards();
+  }
+
+  function saveProfileFromModal() {
+    const name = document.getElementById('profileName').value.trim();
+    if (!name) {
+      showVmAlert('Название профиля обязательно.', 'error');
+      return;
+    }
+
+    const profiles = loadProfiles();
+    const nextProfile = {
+      id: vmEditingProfileId || newVmProfileId(),
+      name,
+      vm_url: document.getElementById('profileVmUrl').value.trim(),
+      vars: collectModalVars(),
+      label_map: collectModalLabelMap(),
+      selected_presets: collectModalPresetIds(),
+      custom_queries: document.getElementById('profileCustomQueries').value.trim()
+    };
+    const existingIndex = profiles.findIndex((profile) => profile.id === nextProfile.id);
+    if (existingIndex >= 0) {
+      profiles[existingIndex] = nextProfile;
+    } else {
+      profiles.push(nextProfile);
+    }
+    saveProfiles(profiles);
+    refreshVmProfileSelect(nextProfile.id);
+    applyProfile(nextProfile);
+    document.getElementById('vmProfileSelect').value = nextProfile.id;
+    closeProfileModal();
+    showVmAlert(`Профиль «${nextProfile.name}» сохранен.`, 'info');
+  }
+
+  function editCurrentProfile() {
+    const profile = getCurrentProfile();
+    if (!profile) {
+      showVmAlert('Сначала выберите профиль для редактирования.', 'error');
+      return;
+    }
+    openProfileModal(profile);
+  }
+
+  function deleteCurrentProfile() {
+    const profile = getCurrentProfile();
+    if (!profile) {
+      showVmAlert('Профиль не выбран.', 'error');
+      return;
+    }
+    const profiles = loadProfiles().filter((item) => item.id !== profile.id);
+    saveProfiles(profiles);
+    refreshVmProfileSelect('');
+    clearVmForm();
+    showVmAlert(`Профиль «${profile.name}» удален.`, 'info');
+  }
+
+  function initVmSection(data) {
+    if (!document.getElementById('vmUrl').value.trim()) {
+      document.getElementById('vmUrl').value = getDefaultVmUrl();
+    }
+    const autoRange = getAutoVmRange();
+    if (Number.isFinite(autoRange.start) && Number.isFinite(autoRange.end)) {
+      document.getElementById('vmStart').value = toDatetimeLocalValue(autoRange.start);
+      document.getElementById('vmEnd').value = toDatetimeLocalValue(autoRange.end);
+    }
+    if (!document.getElementById('vmProfileSelect').options.length) {
+      renderPresetCheckboxGroups('vmPresets', 'vmPreset', []);
+      refreshVmProfileSelect('');
+      clearVmCards();
+    }
+    updateVmTimeBadge();
+  }
+
+  function getVmTimeRange() {
+    if (vmTimeMode === 'manual') {
+      return {
+        start: fromDatetimeLocalValue(document.getElementById('vmStart').value),
+        end: fromDatetimeLocalValue(document.getElementById('vmEnd').value)
+      };
+    }
+    return getAutoVmRange();
+  }
+
+  function collectVmQueries() {
+    const selectedPresetIds = new Set(getSelectedPresetIds());
+    const selectedPresets = VM_PRESETS
+      .filter((preset) => selectedPresetIds.has(preset.id))
+      .map((preset) => ({ name: preset.name, query: preset.query }));
+    const customQueries = (document.getElementById('vmCustomQuery').value || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line, index) => {
+        const namedParts = line.split(/\s+::\s+/, 2);
+        if (namedParts.length === 2) {
+          const [name, query] = namedParts;
+          return {
+            name: name.trim() || `Custom ${index + 1}`,
+            query: query.trim()
+          };
+        }
+        return {
+          name: line.length > 72 ? `${line.slice(0, 69)}...` : line || `Custom ${index + 1}`,
+          query: line
+        };
+      })
+      .filter((item) => item.query);
+    return selectedPresets.concat(customQueries);
+  }
+
+  function formatVmNumber(value) {
+    if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+    const num = Number(value);
+    if (Math.abs(num) >= 100) return num.toFixed(1);
+    if (Math.abs(num) >= 1) return num.toFixed(2);
+    return num.toFixed(4);
+  }
+
+  function formatVmAxisTime(unixSec) {
+    if (!Number.isFinite(unixSec)) return '—';
+    return new Date(unixSec * 1000).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  }
+
+  function setVmManualRange(start, end) {
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+    document.getElementById('vmStart').value = toDatetimeLocalValue(start);
+    document.getElementById('vmEnd').value = toDatetimeLocalValue(end);
+    setVmTimeMode('manual');
+    updateVmTimeBadge();
+    showVmAlert(`Ручной диапазон установлен: ${formatVmTimeLabel(start)} → ${formatVmTimeLabel(end)}.`, 'info');
+  }
+
+  function buildSparkline(values) {
+    if (!Array.isArray(values) || values.length === 0) {
+      return '<div class="vm-empty" style="padding:12px">Нет данных</div>';
+    }
+    const width = 320;
+    const height = 120;
+    const paddingX = 8;
+    const paddingY = 8;
+    const normalized = values
+      .map((item) => [Number(item[0]), Number(item[1])])
+      .filter((item) => Number.isFinite(item[0]) && Number.isFinite(item[1]));
+    if (!normalized.length) {
+      return '<div class="vm-empty" style="padding:12px">Нет числовых данных</div>';
+    }
+    const numericValues = normalized.map((item) => item[1]);
+    const min = Math.min(...numericValues);
+    const max = Math.max(...numericValues);
+    const span = max - min || 1;
+    const minTs = normalized[0][0];
+    const maxTs = normalized[normalized.length - 1][0];
+    const tsSpan = maxTs - minTs || 1;
+    const innerWidth = width - paddingX * 2;
+    const innerHeight = height - paddingY * 2;
+    const points = normalized.map(([ts, value]) => {
+      const x = paddingX + ((ts - minTs) / tsSpan) * innerWidth;
+      const y = height - paddingY - ((value - min) / span) * innerHeight;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    });
+    const areaPoints = [`${paddingX},${height - paddingY}`]
+      .concat(points)
+      .concat([`${width - paddingX},${height - paddingY}`])
+      .join(' ');
+    const payload = esc(JSON.stringify(normalized));
+    return `
+      <div class="vm-chart" data-series="${payload}">
+        <div class="vm-chart-meta">
+          <span>Y max: <strong>${formatVmNumber(max)}</strong></span>
+          <span class="vm-chart-hover">Наведите на график</span>
+          <span>Y min: <strong>${formatVmNumber(min)}</strong></span>
+        </div>
+        <svg class="vm-sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" aria-hidden="true">
+          <polyline fill="rgba(79,142,247,0.18)" stroke="none" points="${areaPoints}"></polyline>
+          <polyline fill="none" stroke="#78a9ff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${points.join(' ')}"></polyline>
+          <line class="vm-crosshair" x1="${paddingX}" x2="${paddingX}" y1="${paddingY}" y2="${height - paddingY}"></line>
+          <rect class="vm-selection" x="${paddingX}" y="${paddingY}" width="0" height="${innerHeight}"></rect>
+        </svg>
+        <div class="vm-chart-footer">
+          <span>X start: <strong>${formatVmAxisTime(minTs)}</strong></span>
+          <span class="vm-chart-hint">Потяните мышью по графику, чтобы выбрать диапазон</span>
+          <span>X end: <strong>${formatVmAxisTime(maxTs)}</strong></span>
+        </div>
+      </div>
+    `;
+  }
+
+  function initVmCharts() {
+    document.querySelectorAll('.vm-chart[data-series]').forEach((chart) => {
+      if (chart.dataset.bound === '1') return;
+      chart.dataset.bound = '1';
+      let series;
+      try {
+        series = JSON.parse(chart.dataset.series || '[]');
+      } catch (err) {
+        return;
+      }
+      if (!Array.isArray(series) || !series.length) return;
+
+      const svg = chart.querySelector('.vm-sparkline');
+      const hoverEl = chart.querySelector('.vm-chart-hover');
+      const crosshair = chart.querySelector('.vm-crosshair');
+      const selection = chart.querySelector('.vm-selection');
+      if (!svg || !hoverEl || !crosshair || !selection) return;
+
+      const width = 320;
+      const paddingX = 8;
+      const innerWidth = width - paddingX * 2;
+      const minTs = Number(series[0][0]);
+      const maxTs = Number(series[series.length - 1][0]);
+      const tsSpan = maxTs - minTs || 1;
+      let dragStartTs = null;
+
+      function clientXToTs(clientX) {
+        const rect = svg.getBoundingClientRect();
+        const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+        const x = paddingX + ratio * innerWidth;
+        return Math.round(minTs + ((x - paddingX) / innerWidth) * tsSpan);
+      }
+
+      function getNearestPoint(ts) {
+        return series.reduce((best, point) => (
+          Math.abs(point[0] - ts) < Math.abs(best[0] - ts) ? point : best
+        ));
+      }
+
+      function updateHover(ts) {
+        const point = getNearestPoint(ts);
+        const x = paddingX + ((point[0] - minTs) / tsSpan) * innerWidth;
+        crosshair.setAttribute('x1', x.toFixed(2));
+        crosshair.setAttribute('x2', x.toFixed(2));
+        hoverEl.textContent = `${formatVmAxisTime(point[0])} • ${formatVmNumber(point[1])}`;
+      }
+
+      svg.addEventListener('mousemove', (event) => {
+        const ts = clientXToTs(event.clientX);
+        chart.classList.add('is-hovered');
+        updateHover(ts);
+        if (dragStartTs !== null) {
+          chart.classList.add('is-selecting');
+          const x1 = paddingX + ((Math.min(dragStartTs, ts) - minTs) / tsSpan) * innerWidth;
+          const x2 = paddingX + ((Math.max(dragStartTs, ts) - minTs) / tsSpan) * innerWidth;
+          selection.setAttribute('x', x1.toFixed(2));
+          selection.setAttribute('width', Math.max(2, x2 - x1).toFixed(2));
+        }
+      });
+
+      svg.addEventListener('mouseleave', () => {
+        if (dragStartTs === null) {
+          chart.classList.remove('is-hovered');
+          hoverEl.textContent = 'Наведите на график';
+        }
+      });
+
+      svg.addEventListener('mousedown', (event) => {
+        dragStartTs = clientXToTs(event.clientX);
+        chart.classList.add('is-hovered');
+        chart.classList.add('is-selecting');
+        updateHover(dragStartTs);
+        selection.setAttribute('width', '2');
+      });
+
+      window.addEventListener('mouseup', (event) => {
+        if (dragStartTs === null) return;
+        const dragEndTs = clientXToTs(event.clientX);
+        const start = Math.min(dragStartTs, dragEndTs);
+        const end = Math.max(dragStartTs, dragEndTs);
+        dragStartTs = null;
+        chart.classList.remove('is-selecting');
+        if (end - start >= 10) {
+          setVmManualRange(start, end);
+        }
+      });
+    });
+  }
+
+  function renderVmCards(results, labelMap) {
+    const cards = document.getElementById('vmCards');
+    if (!cards) return;
+    if (!Array.isArray(results) || !results.length) {
+      cards.innerHTML = '<div class="vm-empty">VictoriaMetrics не вернула ни одной метрики.</div>';
+      return;
+    }
+    cards.innerHTML = results.map((result) => {
+      const title = applyLabelMap(result.name || 'Без названия', labelMap);
+      const values = Array.isArray(result.values) ? result.values : [];
+      return `
+        <article class="vm-card">
+          <div class="vm-card-header">
+            <div class="vm-card-title">${esc(title)}</div>
+          </div>
+          ${result.error ? `<div class="vm-card-error">${esc(result.error)}</div>` : buildSparkline(values)}
+          <div class="vm-stats">
+            <div class="vm-stat">
+              <div class="vm-stat-label">AVG</div>
+              <div class="vm-stat-value">${formatVmNumber(result.avg)}</div>
+            </div>
+            <div class="vm-stat">
+              <div class="vm-stat-label">MIN</div>
+              <div class="vm-stat-value">${formatVmNumber(result.min)}</div>
+            </div>
+            <div class="vm-stat">
+              <div class="vm-stat-label">MAX</div>
+              <div class="vm-stat-value">${formatVmNumber(result.max)}</div>
+            </div>
+          </div>
+          <div class="vm-card-query">${esc(result.query || '')}</div>
+        </article>
+      `;
+    }).join('');
+  }
+
+  async function loadMetrics() {
+    const profile = getCurrentProfile();
+    const vmUrl = document.getElementById('vmUrl').value.trim() || VM_URL_DEFAULT || '';
+    const range = getVmTimeRange();
+    const queries = collectVmQueries();
+
+    if (!vmUrl) {
+      showVmAlert('Укажите VM URL или выберите профиль с настроенным URL.', 'error');
+      return;
+    }
+    if (!Number.isFinite(range.start) || !Number.isFinite(range.end)) {
+      showVmAlert('Не удалось определить временной диапазон. Сначала сравните JTL или задайте ручные даты.', 'error');
+      return;
+    }
+    if (range.end <= range.start) {
+      showVmAlert('Конец диапазона должен быть больше начала.', 'error');
+      return;
+    }
+    if (!queries.length) {
+      showVmAlert('Выберите хотя бы один preset или добавьте custom PromQL.', 'error');
+      return;
+    }
+
+    hideVmAlert();
+    setVmLoading(true);
+    try {
+      const resp = await fetch('/metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vm_url: vmUrl,
+          start: range.start,
+          end: range.end,
+          vars: profile?.vars || {},
+          queries
+        })
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.error) {
+        showVmAlert(data.error || 'Не удалось загрузить метрики.', 'error');
+        return;
+      }
+      renderVmCards(data.results || [], profile?.label_map || {});
+      initVmCharts();
+      showVmAlert(`Загружено метрик: ${(data.results || []).length}.`, 'info');
+    } catch (err) {
+      showVmAlert(`Ошибка загрузки метрик: ${err.message}`, 'error');
+    } finally {
+      setVmLoading(false);
+    }
+  }
 
   function getSortedRows(rows) {
     const list = [...(rows || [])];
@@ -781,6 +2188,28 @@
 
   setupDropZone('drop1', 'file1', 'fname1');
   setupDropZone('drop2', 'file2', 'fname2');
+  renderPresetCheckboxGroups('vmPresets', 'vmPreset', []);
+  const initialProfiles = loadProfiles();
+  const initialProfileId = initialProfiles[0]?.id || '';
+  refreshVmProfileSelect(initialProfileId);
+  if (initialProfileId) {
+    document.getElementById('vmProfileSelect').value = initialProfileId;
+    applyProfile(getCurrentProfile());
+  } else {
+    clearVmForm();
+  }
+  setVmTimeMode('auto');
+
+  document.getElementById('vmProfileSelect').addEventListener('change', () => {
+    applyProfile(getCurrentProfile());
+  });
+  document.getElementById('vmStart').addEventListener('change', updateVmTimeBadge);
+  document.getElementById('vmEnd').addEventListener('change', updateVmTimeBadge);
+  document.getElementById('vmProfileModal').addEventListener('click', (event) => {
+    if (event.target.id === 'vmProfileModal') {
+      closeProfileModal();
+    }
+  });
 
   function collectDeltaRules() {
     const rules = {};
@@ -835,6 +2264,7 @@
 
       lastResult = data;
       renderTable(data);
+      initVmSection(data);
 
     } catch (err) {
       showError('Ошибка соединения с сервером: ' + err.message);
@@ -851,6 +2281,7 @@
 
     document.getElementById('emptyState').style.display = 'none';
     document.getElementById('resultSection').style.display = '';
+    document.getElementById('vmSection').style.display = '';
     document.getElementById('tableTitle').textContent =
       `${name1}  →  ${name2}  (${rows.length} транзакций)`;
 
@@ -1144,5 +2575,6 @@
 
   document.addEventListener('focusout', () => hideTooltip());
 </script>
+<script src="{{ url_for('static', filename='vm-metrics-v2.js', v='20260306-3') }}"></script>
 </body>
 </html>
