@@ -233,28 +233,14 @@ def _err_css_class(err1: float, err2: float, rules: dict[str, float]) -> str:
     return "neutral"
 
 
-def compare(
-    df1: pd.DataFrame,
-    df2: pd.DataFrame,
+def _compare_aggregated(
+    agg1: pd.DataFrame,
+    agg2: pd.DataFrame,
     name1: str,
     name2: str,
-    rules: dict | None = None,
+    active_rules: dict,
 ) -> dict:
-    """
-    Сравнивает агрегированные метрики двух прогонов.
-
-    :param df1: агрегированный DataFrame прогона 1
-    :param df2: агрегированный DataFrame прогона 2
-    :param name1: название прогона 1
-    :param name2: название прогона 2
-    :return: словарь с результатами для отдачи в JSON
-    """
-    active_rules = _normalize_delta_rules(rules)
-
-    agg1 = aggregate(df1)
-    agg2 = aggregate(df2)
-
-    # Объединяем по label — outer join, чтобы видеть транзакции из обоих прогонов
+    """Core comparison on already-aggregated DataFrames (output of aggregate())."""
     merged = pd.merge(agg1, agg2, on="label", how="outer", suffixes=("_1", "_2"))
 
     rows = []
@@ -317,6 +303,30 @@ def compare(
         "rows":    rows,
         "summary": summary,
     }
+
+
+def compare(
+    df1: pd.DataFrame,
+    df2: pd.DataFrame,
+    name1: str,
+    name2: str,
+    rules: dict | None = None,
+) -> dict:
+    """Compare two raw JTL DataFrames (output of parse_jtl). Aggregates internally."""
+    active_rules = _normalize_delta_rules(rules)
+    return _compare_aggregated(aggregate(df1), aggregate(df2), name1, name2, active_rules)
+
+
+def compare_preaggregated(
+    agg1: pd.DataFrame,
+    agg2: pd.DataFrame,
+    name1: str,
+    name2: str,
+    rules: dict | None = None,
+) -> dict:
+    """Compare two pre-aggregated DataFrames (output of aggregate_streaming_jtl)."""
+    active_rules = _normalize_delta_rules(rules)
+    return _compare_aggregated(agg1, agg2, name1, name2, active_rules)
 
 
 def _build_summary(rows: list[dict], rules: dict[str, float]) -> dict:

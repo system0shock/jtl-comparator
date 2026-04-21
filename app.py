@@ -4,25 +4,228 @@ JTL Comparator — Flask-приложение для сравнения резу
 Открыть: http://localhost:5000
 """
 
+import json
 import os
 import tempfile
+import threading
 from configparser import ConfigParser
 from pathlib import Path
 
 from flask import Flask, render_template, request, jsonify
 
 from analyzers.jtl_analyzer import parse_jtl, compare
+from analyzers.jtl_jobs import JobRegistry
+from analyzers.jtl_worker import (
+    run_comparison_job,
+    _PROGRESS_FILE,
+    _RESULT_FILE,
+    _ERROR_FILE,
+    _DONE_FILE,
+)
 
 app = Flask(__name__)
 
-# Максимальный размер загружаемого файла — 200 МБ
-app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+# 4 ГБ — поддержка больших JTL-файлов
+app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024
+
+_JOBS_ROOT = Path(tempfile.gettempdir()) / "jtl-comparator" / "jobs"
+_registry = JobRegistry(_JOBS_ROOT, completed_ttl_seconds=15 * 60)
+_registry_lock = threading.Lock()
+
+# Живые воркер-треды: job_id -> (Thread, cancel_event)
+_workers: dict[str, tuple[threading.Thread, threading.Event]] = {}
+_workers_lock = threading.Lock()
+
+
+def _collect_delta_rules(form) -> dict:
+    keys = [
+        "time_warning_pct", "time_critical_pct", "time_improved_pct",
+        "rps_warning_drop_pct", "rps_critical_drop_pct", "rps_improved_gain_pct",
+        "err_warning_increase_pct", "err_critical_increase_pct", "err_improved_decrease_pct",
+    ]
+    return {k: form.get(k) for k in keys}
+
+
+def _sync_job_from_disk(job_id: str) -> dict | None:
+    """Read worker-written files and update registry to reflect current state."""
+    with _registry_lock:
+        snapshot = _registry.get_job(job_id)
+    if snapshot is None:
+        return None
+
+    if snapshot["status"] in ("completed", "failed", "cancelled"):
+        return snapshot
+
+    work_dir = Path(snapshot["work_dir"])
+    done_file = work_dir / _DONE_FILE
+    error_file = work_dir / _ERROR_FILE
+    progress_file = work_dir / _PROGRESS_FILE
+
+    if done_file.exists():
+        result_path = work_dir / _RESULT_FILE
+        with _registry_lock:
+            _registry.update_job(job_id, status="completed", stage="completed",
+                                 message="Готово", progress_pct=100,
+                                 result_path=result_path)
+        with _workers_lock:
+            _workers.pop(job_id, None)
+        with _registry_lock:
+            return _registry.get_job(job_id)
+
+    if error_file.exists():
+        try:
+            err_msg = json.loads(error_file.read_text(encoding="utf-8")).get("error", "")
+        except Exception:
+            err_msg = "Неизвестная ошибка"
+        with _registry_lock:
+            _registry.update_job(job_id, status="failed", stage="failed",
+                                 message="Ошибка", error=err_msg)
+        with _workers_lock:
+            _workers.pop(job_id, None)
+        with _registry_lock:
+            return _registry.get_job(job_id)
+
+    if progress_file.exists():
+        try:
+            prog = json.loads(progress_file.read_text(encoding="utf-8"))
+            with _registry_lock:
+                _registry.update_job(job_id,
+                                     stage=prog.get("stage"),
+                                     message=prog.get("message"),
+                                     progress_pct=prog.get("progress_pct"))
+        except Exception:
+            pass
+
+    # Check if thread finished unexpectedly (no done/error file)
+    with _workers_lock:
+        worker_entry = _workers.get(job_id)
+    if worker_entry is not None:
+        thread, _ = worker_entry
+        if not thread.is_alive():
+            with _registry_lock:
+                snap = _registry.get_job(job_id)
+            if snap and snap["status"] not in ("completed", "failed", "cancelled"):
+                with _registry_lock:
+                    _registry.update_job(job_id, status="failed", stage="failed",
+                                         message="Поток завершился неожиданно",
+                                         error="Worker thread exited without result")
+            with _workers_lock:
+                _workers.pop(job_id, None)
+
+    with _registry_lock:
+        return _registry.get_job(job_id)
+
+
+@app.errorhandler(413)
+def request_entity_too_large(e):
+    limit_gb = app.config["MAX_CONTENT_LENGTH"] / (1024 ** 3)
+    return jsonify({"error": f"Файл слишком большой. Максимальный размер: {limit_gb:.0f} ГБ."}), 413
 
 
 @app.route("/")
 def index():
     """Отдаёт главную страницу приложения."""
     return render_template("index.html")
+
+
+@app.route("/compare/jobs", methods=["POST"])
+def create_job():
+    """POST /compare/jobs — создаёт асинхронный job сравнения двух JTL."""
+    if "file1" not in request.files or "file2" not in request.files:
+        return jsonify({"error": "Необходимо загрузить оба файла (Run 1 и Run 2)."}), 400
+
+    file1 = request.files["file1"]
+    file2 = request.files["file2"]
+    if not file1.filename or not file2.filename:
+        return jsonify({"error": "Файлы не выбраны."}), 400
+
+    name1 = request.form.get("name1", "Run 1").strip() or "Run 1"
+    name2 = request.form.get("name2", "Run 2").strip() or "Run 2"
+    jtl_mode = request.form.get("jtl_mode", "auto")
+    if jtl_mode not in ("auto", "tc", "samplers"):
+        jtl_mode = "auto"
+    delta_rules = _collect_delta_rules(request.form)
+
+    with _registry_lock:
+        snapshot = _registry.create_job()
+    job_id = snapshot["job_id"]
+    work_dir = Path(snapshot["work_dir"])
+
+    try:
+        p1 = work_dir / ("run1" + (Path(file1.filename).suffix or ".jtl"))
+        p2 = work_dir / ("run2" + (Path(file2.filename).suffix or ".jtl"))
+        file1.save(str(p1))
+        file2.save(str(p2))
+    except Exception as exc:
+        with _registry_lock:
+            _registry.update_job(job_id, status="failed", stage="failed",
+                                 message="Ошибка сохранения файлов", error=str(exc))
+        return jsonify({"error": f"Не удалось сохранить файлы: {exc}"}), 500
+
+    cancel_event = threading.Event()
+    thread = threading.Thread(
+        target=run_comparison_job,
+        kwargs=dict(work_dir=work_dir, path1=str(p1), path2=str(p2),
+                    name1=name1, name2=name2, jtl_mode=jtl_mode,
+                    delta_rules=delta_rules, cancel_event=cancel_event),
+        daemon=True,
+    )
+    thread.start()
+
+    with _registry_lock:
+        _registry.start_worker(job_id, stage="upload_saved",
+                               message="Файлы загружены, запуск анализа…")
+    with _workers_lock:
+        _workers[job_id] = (thread, cancel_event)
+
+    return jsonify({"job_id": job_id, "status": "queued"}), 202
+
+
+@app.route("/compare/jobs/<job_id>", methods=["GET"])
+def get_job(job_id: str):
+    """GET /compare/jobs/<job_id> — статус и результат job."""
+    snapshot = _sync_job_from_disk(job_id)
+    if snapshot is None:
+        return jsonify({"error": "Job не найден."}), 404
+
+    response = {
+        "job_id": snapshot["job_id"],
+        "status": snapshot["status"],
+        "stage": snapshot["stage"],
+        "message": snapshot["message"],
+        "progress_pct": snapshot["progress_pct"],
+    }
+
+    if snapshot["status"] == "completed" and snapshot.get("result_path"):
+        try:
+            result_path = Path(snapshot["result_path"])
+            response["result"] = json.loads(result_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return jsonify({"error": f"Не удалось прочитать результат: {exc}"}), 500
+
+    if snapshot["status"] == "failed":
+        response["error"] = snapshot.get("error", "Неизвестная ошибка")
+
+    return jsonify(response)
+
+
+@app.route("/compare/jobs/<job_id>", methods=["DELETE"])
+def cancel_job(job_id: str):
+    """DELETE /compare/jobs/<job_id> — отмена job."""
+    with _registry_lock:
+        snapshot = _registry.get_job(job_id)
+    if snapshot is None:
+        return jsonify({"error": "Job не найден."}), 404
+
+    with _workers_lock:
+        worker_entry = _workers.pop(job_id, None)
+    if worker_entry is not None:
+        _, cancel_event = worker_entry
+        cancel_event.set()
+
+    with _registry_lock:
+        cancelled = _registry.cancel_job(job_id)
+    return jsonify(cancelled), 202
 
 
 @app.route("/compare", methods=["POST"])
